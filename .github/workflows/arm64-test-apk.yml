@@ -43,7 +43,7 @@ jobs:
       - name: Set up Gradle cache
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Run editor search tests and build the ARM64 APK
+      - name: Run unit tests and build the ARM64 APK
         run: |
           ci_version_code=$((17 + GITHUB_RUN_NUMBER))
           echo "CI versionCode=$ci_version_code"

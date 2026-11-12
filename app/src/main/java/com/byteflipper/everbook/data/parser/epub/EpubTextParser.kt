@@ -71,17 +71,24 @@ class EpubTextParser @Inject constructor(
                             entry.name.endsWith(format, ignoreCase = true)
                         }
                     }
-                    val chapterTitleEntries = zip.getChapterTitleMapFromToc(tocEntry)
+                    val chapterTitleEntries = zip.getChapterTitleMapFromNavigation(
+                        opfEntry = opfEntry,
+                        zipEntries = zipEntries,
+                        chapterEntries = chapterEntries
+                    ) ?: zip.getChapterTitleMapFromToc(tocEntry)
+                    val hasUsableToc = !chapterTitleEntries.isNullOrEmpty()
 
                     Log.i(EPUB_TAG, "TOC Entry: ${tocEntry?.name ?: "no toc.ncx"}")
                     Log.i(EPUB_TAG, "OPF Entry: ${opfEntry?.name ?: "no .opf entry"}")
                     Log.i(EPUB_TAG, "Chapter entries, size: ${chapterEntries.size}")
                     Log.i(EPUB_TAG, "Title entries, size: ${chapterTitleEntries?.size}")
+                    Log.i(EPUB_TAG, "Using TOC as authoritative: $hasUsableToc")
 
                     zip.parseEpub(
                         chapterEntries = chapterEntries,
                         imageEntries = imageEntries,
                         chapterTitleEntries = chapterTitleEntries,
+                        hasUsableToc = hasUsableToc,
                         onChunk = onChunk
                     )
                 }
@@ -106,6 +113,7 @@ class EpubTextParser @Inject constructor(
         chapterEntries: List<ZipEntry>,
         imageEntries: List<ZipEntry>,
         chapterTitleEntries: Map<Source, ReaderText.Chapter>?,
+        hasUsableToc: Boolean,
         onChunk: ReaderTextChunkSink?
     ): List<ReaderText> {
         val readerText = mutableListOf<ReaderText>()
@@ -122,7 +130,8 @@ class EpubTextParser @Inject constructor(
                         zip = this@parseEpub,
                         entry = entry,
                         imageEntriesByName = imageEntriesByName,
-                        chapterTitleMap = chapterTitleEntries
+                        chapterTitleMap = chapterTitleEntries,
+                        hasUsableToc = hasUsableToc
                     )?.let { parsedChapters.add(index to it) }
                     yield()
                 }
@@ -147,7 +156,8 @@ class EpubTextParser @Inject constructor(
         zip: ZipFile,
         entry: ZipEntry,
         imageEntriesByName: Map<String, ZipEntry>,
-        chapterTitleMap: Map<Source, ReaderText.Chapter>?
+        chapterTitleMap: Map<Source, ReaderText.Chapter>?,
+        hasUsableToc: Boolean
     ): List<ReaderText>? {
         val content = withContext(Dispatchers.IO) {
             zip.getInputStream(entry)
@@ -160,10 +170,16 @@ class EpubTextParser @Inject constructor(
             includeChapter = false
         ).toMutableList()
 
-        val chapter = getChapterTitleFromToc(
+        val tocChapter = getChapterTitleFromToc(
             chapterSource = entry.name,
             chapterTitleMap = chapterTitleMap
-        ) ?: run {
+        )
+        if (tocChapter == null && hasUsableToc) {
+            if (!readerText.hasReadableReaderText(requireChapter = false)) return null
+            return readerText
+        }
+
+        val chapter = tocChapter ?: run {
             val firstVisibleText = readerText.firstOrNull { line ->
                 line is ReaderText.Text && line.line.text.containsVisibleText()
             } as? ReaderText.Text ?: return null
@@ -186,6 +202,52 @@ class EpubTextParser @Inject constructor(
         }
 
         return readerText
+    }
+
+    private suspend fun ZipFile.getChapterTitleMapFromNavigation(
+        opfEntry: ZipEntry?,
+        zipEntries: List<ZipEntry>,
+        chapterEntries: List<ZipEntry>
+    ): Map<Source, ReaderText.Chapter>? {
+        if (opfEntry == null) return null
+
+        return try {
+            val opfContent = getInputStream(opfEntry).bufferedReader().use { it.readText() }
+            val navHref = Jsoup.parse(opfContent)
+                .select("manifest > item")
+                .firstOrNull { item ->
+                    item.attr("properties").split(Regex("\\s+")).any { it == "nav" }
+                }
+                ?.attr("href")
+                ?.trim()
+                ?.takeIf { it.isNotBlank() }
+                ?: return null
+
+            val navPath = EpubNavigationParser.resolveArchivePath(opfEntry.name, navHref)
+                ?: return null
+            val navEntry = zipEntries.firstOrNull { entry ->
+                entry.name.replace('\\', '/') == navPath
+            } ?: zipEntries.firstOrNull { entry ->
+                entry.name.replace('\\', '/').equals(navPath, ignoreCase = true)
+            } ?: return null
+
+            val navContent = getInputStream(navEntry).bufferedReader().use { it.readText() }
+            val spinePaths = chapterEntries.map { it.name.replace('\\', '/') }.toSet()
+            val chapterTitles = linkedMapOf<Source, ReaderText.Chapter>()
+            EpubNavigationParser.parse(navContent, navEntry.name).forEach { item ->
+                if (item.sourcePath in spinePaths && item.sourcePath !in chapterTitles) {
+                    chapterTitles[item.sourcePath] = ReaderText.Chapter(
+                        title = item.title,
+                        nested = item.nested
+                    )
+                }
+            }
+
+            chapterTitles.takeIf { it.isNotEmpty() }
+        } catch (e: Exception) {
+            Log.w(EPUB_TAG, "Could not parse EPUB 3 navigation.", e)
+            null
+        }
     }
 
     private suspend fun ZipFile.getChapterTitleMapFromToc(
@@ -246,9 +308,12 @@ class EpubTextParser @Inject constructor(
         chapterTitleMap: Map<Source, ReaderText.Chapter>?
     ): ReaderText.Chapter? {
         if (chapterTitleMap.isNullOrEmpty()) return null
-        return chapterTitleMap.getOrElse(chapterSource.substringAfterLast(File.separator)) {
-            null
-        }
+        val normalizedSource = chapterSource.replace('\\', '/').trimStart('/')
+        return chapterTitleMap[normalizedSource]
+            ?: chapterTitleMap.entries.firstOrNull {
+                it.key.equals(normalizedSource, ignoreCase = true)
+            }?.value
+            ?: chapterTitleMap[normalizedSource.substringAfterLast('/')]
     }
 
     private fun ZipFile.getChapterEntries(
