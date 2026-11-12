@@ -173,6 +173,7 @@ class BrowseModel @Inject constructor(
                     _state.update {
                         it.copy(
                             files = it.files.map { file -> file.copy(selected = false) },
+                            selectedItemsCount = 0,
                             hasSelectedItems = false
                         )
                     }
@@ -201,12 +202,7 @@ class BrowseModel @Inject constructor(
                     _state.update {
                         it.copy(
                             files = editedList,
-                            selectedItemsCount = editedList.filter { file ->
-                                file.selected
-                            }.size.run {
-                                if (this == 0) return@run it.selectedItemsCount
-                                this
-                            },
+                            selectedItemsCount = editedList.count { file -> file.selected },
                             hasSelectedItems = editedList.any { file ->
                                 file.selected
                             }
@@ -230,12 +226,7 @@ class BrowseModel @Inject constructor(
                     _state.update {
                         it.copy(
                             files = editedList,
-                            selectedItemsCount = editedList.filter { file ->
-                                file.selected
-                            }.size.run {
-                                if (this == 0) return@run it.selectedItemsCount
-                                this
-                            },
+                            selectedItemsCount = editedList.count { file -> file.selected },
                             hasSelectedItems = editedList.any { file ->
                                 file.selected
                             }
@@ -437,6 +428,7 @@ class BrowseModel @Inject constructor(
             _state.update {
                 it.copy(
                     files = this,
+                    selectedItemsCount = 0,
                     hasSelectedItems = false,
                     isLoading = false
                 )

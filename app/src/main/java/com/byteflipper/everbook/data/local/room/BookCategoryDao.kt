@@ -32,6 +32,12 @@ interface BookCategoryDao {
     @Query("DELETE FROM BookCategoryCrossRef WHERE bookId IN (:bookIds)")
     suspend fun deleteByBooks(bookIds: List<Int>)
 
+    @Query("INSERT OR IGNORE INTO BookCategoryCrossRef (bookId, categoryId) SELECT bookId, :targetId FROM BookCategoryCrossRef WHERE categoryId = :sourceId")
+    suspend fun copyCategoryMembers(sourceId: Int, targetId: Int)
+
+    @Query("DELETE FROM BookCategoryCrossRef WHERE categoryId = :categoryId")
+    suspend fun deleteByCategory(categoryId: Int)
+
     /** Получить категории книги */
     @Query("SELECT categoryId FROM BookCategoryCrossRef WHERE bookId = :bookId")
     suspend fun getCategoriesForBook(bookId: Int): List<Int>

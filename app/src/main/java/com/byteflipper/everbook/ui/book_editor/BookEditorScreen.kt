@@ -9,6 +9,8 @@ package com.byteflipper.everbook.ui.book_editor
 
 import android.os.Parcelable
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -121,6 +123,30 @@ private fun BookEditorContent(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
+    var exportAfterSave by remember { mutableStateOf(false) }
+    val exportLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("text/plain")
+    ) { destination ->
+        if (destination != null) {
+            exportAfterSave = false
+            scope.launch {
+                val exported = model.exportCorrectedCopy(destination)
+                snackbarHostState.showSnackbar(
+                    context.getString(
+                        if (exported) R.string.book_editor_exported
+                        else R.string.book_editor_export_failed
+                    )
+                )
+            }
+        } else if (exportAfterSave) {
+            exportAfterSave = false
+            scope.launch {
+                snackbarHostState.showSnackbar(
+                    context.getString(R.string.book_editor_export_cancelled_after_save)
+                )
+            }
+        }
+    }
     var showSearch by rememberSaveable(bookId) { mutableStateOf(false) }
     var showSearchReturn by rememberSaveable(bookId) { mutableStateOf(false) }
     var showMoreMenu by remember { mutableStateOf(false) }
@@ -136,6 +162,29 @@ private fun BookEditorContent(
     var searchJump by remember { mutableStateOf<SearchJump?>(null) }
     var jumpSequence by remember { mutableStateOf(0) }
     val editorListState = rememberLazyListState()
+
+    fun requestExport() {
+        val path = state.book?.filePath.orEmpty()
+        val extension = path.substringAfterLast('.', "").lowercase()
+        if (extension != "txt") {
+            val message = if (exportAfterSave) {
+                R.string.book_editor_saved_export_unsupported
+            } else {
+                R.string.book_editor_export_unsupported
+            }
+            exportAfterSave = false
+            scope.launch {
+                snackbarHostState.showSnackbar(
+                    context.getString(message)
+                )
+            }
+            return
+        }
+        val fileName = path.substringAfterLast('/')
+        val baseName = fileName.substringBeforeLast('.', fileName)
+        val suffix = context.getString(R.string.book_editor_export_name_suffix)
+        exportLauncher.launch("$baseName$suffix.txt")
+    }
 
     LaunchedEffect(searchJump?.sequence) {
         val match = searchJump?.match ?: return@LaunchedEffect
@@ -206,9 +255,8 @@ private fun BookEditorContent(
                                     if (returnToReader) {
                                         ReaderScreen.reloadEditedBookChannel.trySend(bookId)
                                     }
-                                    snackbarHostState.showSnackbar(
-                                        context.getString(R.string.book_editor_saved)
-                                    )
+                                    exportAfterSave = true
+                                    requestExport()
                                 } else {
                                     model.state.value.errorMessage?.let {
                                         context.getString(R.string.book_editor_save_error, it).showToast(context)
@@ -216,14 +264,17 @@ private fun BookEditorContent(
                                 }
                             }
                         },
-                        enabled = state.isDirty && !state.isSaving
+                        enabled = state.isDirty && !state.isSaving && !state.isExporting
                     ) {
                         Icon(
                             painter = painterResource(R.drawable.ic_check_rounded_24px),
                             contentDescription = stringResource(R.string.book_editor_save)
                         )
                     }
-                    IconButton(onClick = { showMoreMenu = true }) {
+                    IconButton(
+                        onClick = { showMoreMenu = true },
+                        enabled = !state.isSaving && !state.isExporting
+                    ) {
                         Icon(
                             painter = painterResource(R.drawable.ic_more_vert_rounded_24px),
                             contentDescription = stringResource(R.string.book_editor_more_options)
@@ -234,7 +285,17 @@ private fun BookEditorContent(
                         onDismissRequest = { showMoreMenu = false }
                     ) {
                         DropdownMenuItem(
+                            text = { Text(stringResource(R.string.book_editor_export_copy)) },
+                            enabled = !state.isSaving && !state.isExporting,
+                            onClick = {
+                                showMoreMenu = false
+                                exportAfterSave = false
+                                requestExport()
+                            }
+                        )
+                        DropdownMenuItem(
                             text = { Text(stringResource(R.string.book_editor_restore_source)) },
+                            enabled = !state.isSaving && !state.isExporting,
                             leadingIcon = {
                                 Icon(
                                     painter = painterResource(R.drawable.ic_settings_backup_restore_rounded_24px),
@@ -261,18 +322,24 @@ private fun BookEditorContent(
                     ) {
                         TextButton(
                             onClick = model::undo,
-                            enabled = state.undoStack.isNotEmpty()
+                            enabled = state.undoStack.isNotEmpty() && !state.isSaving && !state.isExporting
                         ) {
                             Text(stringResource(R.string.book_editor_undo_count, state.undoStack.size))
                         }
                         TextButton(
                             onClick = model::redo,
-                            enabled = state.redoStack.isNotEmpty()
+                            enabled = state.redoStack.isNotEmpty() && !state.isSaving && !state.isExporting
                         ) {
                             Text(stringResource(R.string.book_editor_redo_count, state.redoStack.size))
                         }
                         Spacer(Modifier.weight(1f))
-                        if (state.isDirty) {
+                        if (state.isExporting) {
+                            Text(
+                                stringResource(R.string.book_editor_exporting),
+                                color = MaterialTheme.colorScheme.tertiary,
+                                style = MaterialTheme.typography.labelMedium
+                            )
+                        } else if (state.isDirty) {
                             Text(
                                 stringResource(R.string.book_editor_unsaved),
                                 color = MaterialTheme.colorScheme.tertiary,
@@ -376,6 +443,7 @@ private fun BookEditorContent(
                                 minLines = 1,
                                 maxLines = 2,
                                 jump = searchJump,
+                                enabled = !state.isSaving && !state.isExporting,
                                 onTextChange = { model.changeText(index, it) }
                             )
 
@@ -387,6 +455,7 @@ private fun BookEditorContent(
                                 minLines = 3,
                                 maxLines = Int.MAX_VALUE,
                                 jump = searchJump,
+                                enabled = !state.isSaving && !state.isExporting,
                                 onTextChange = { model.changeText(index, it) }
                             )
 
@@ -398,6 +467,7 @@ private fun BookEditorContent(
                                 minLines = 2,
                                 maxLines = Int.MAX_VALUE,
                                 jump = searchJump,
+                                enabled = !state.isSaving && !state.isExporting,
                                 onTextChange = { model.changeText(index, it) }
                             )
 
@@ -575,6 +645,7 @@ private fun EditorSourceField(
     minLines: Int,
     maxLines: Int,
     jump: SearchJump?,
+    enabled: Boolean,
     onTextChange: (String) -> Unit
 ) {
     val focusRequester = remember(bookId, entryIndex) { FocusRequester() }
@@ -605,6 +676,7 @@ private fun EditorSourceField(
         minLines = minLines,
         maxLines = maxLines,
         shape = MaterialTheme.shapes.medium,
+        enabled = enabled,
         textStyle = MaterialTheme.typography.bodyLarge
     )
 }

@@ -938,6 +938,14 @@
     <string name="book_editor_save">Save changes</string>
     <string name="book_editor_saved">Changes saved</string>
     <string name="book_editor_save_error">Could not save: %1$s</string>
+    <string name="book_editor_export_copy">Export corrected copy</string>
+    <string name="book_editor_export_name_suffix"> - corrected</string>
+    <string name="book_editor_exported">Corrected copy saved and verified; the original is unchanged.</string>
+    <string name="book_editor_export_failed">Could not create a verified copy. The original remains unchanged.</string>
+    <string name="book_editor_export_cancelled_after_save">Edits remain saved in the app; no separate file was exported.</string>
+    <string name="book_editor_export_unsupported">Safe export is not yet verified for this format. In-app edits remain separate from the original.</string>
+    <string name="book_editor_saved_export_unsupported">Edits are saved in the app, but a safe separate copy is not yet supported for this format.</string>
+    <string name="book_editor_exporting">Exporting…</string>
     <string name="book_editor_unsaved">Unsaved</string>
     <string name="book_editor_undo_count">Undo (%1$d)</string>
     <string name="book_editor_redo_count">Redo (%1$d)</string>

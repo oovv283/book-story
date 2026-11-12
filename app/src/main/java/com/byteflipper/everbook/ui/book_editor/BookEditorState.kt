@@ -15,6 +15,7 @@ internal data class BookEditorState(
     val text: List<ReaderText> = emptyList(),
     val isLoading: Boolean = true,
     val isSaving: Boolean = false,
+    val isExporting: Boolean = false,
     val isDirty: Boolean = false,
     val undoStack: List<List<ReaderText>> = emptyList(),
     val redoStack: List<List<ReaderText>> = emptyList(),

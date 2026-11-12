@@ -7,6 +7,7 @@
 
 package com.byteflipper.everbook.ui.book_editor
 
+import android.net.Uri
 import android.os.SystemClock
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -14,6 +15,7 @@ import com.byteflipper.everbook.domain.reader.ReaderText
 import com.byteflipper.everbook.domain.reader.isEditableBookFormat
 import com.byteflipper.everbook.domain.repository.BookRepository
 import com.byteflipper.everbook.domain.use_case.book.GetBookById
+import com.byteflipper.everbook.domain.use_case.book.ExportEditedBook
 import com.byteflipper.everbook.domain.use_case.book.GetText
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
@@ -27,7 +29,8 @@ import kotlinx.coroutines.withContext
 class BookEditorModel @Inject constructor(
     private val getBookById: GetBookById,
     private val getText: GetText,
-    private val bookRepository: BookRepository
+    private val bookRepository: BookRepository,
+    private val exportEditedBook: ExportEditedBook
 ) : ViewModel() {
     private val _state = MutableStateFlow(BookEditorState())
     internal val state = _state.asStateFlow()
@@ -67,6 +70,7 @@ class BookEditorModel @Inject constructor(
 
     fun changeText(index: Int, value: String) {
         val current = _state.value
+        if (current.isSaving || current.isExporting) return
         val item = current.text.getOrNull(index) ?: return
         if (item.editorSource() == value) return
 
@@ -96,6 +100,7 @@ class BookEditorModel @Inject constructor(
     /** Applies a multi-field edit (such as Replace Selected) as one undoable action. */
     fun applyBatch(updatedText: List<ReaderText>) {
         val current = _state.value
+        if (current.isSaving || current.isExporting) return
         if (updatedText == current.text) return
         _state.value = current.copy(
             text = updatedText,
@@ -110,6 +115,7 @@ class BookEditorModel @Inject constructor(
 
     fun undo() {
         val current = _state.value
+        if (current.isSaving || current.isExporting) return
         val target = current.undoStack.lastOrNull() ?: return
         _state.value = current.copy(
             text = target,
@@ -124,6 +130,7 @@ class BookEditorModel @Inject constructor(
 
     fun redo() {
         val current = _state.value
+        if (current.isSaving || current.isExporting) return
         val target = current.redoStack.lastOrNull() ?: return
         _state.value = current.copy(
             text = target,
@@ -139,6 +146,7 @@ class BookEditorModel @Inject constructor(
     suspend fun save(): Boolean {
         val current = _state.value
         val book = current.book ?: return false
+        if (current.isExporting || current.isSaving) return false
         if (!current.isDirty) return true
         val snapshot = current.text
         _state.value = current.copy(isSaving = true, errorMessage = null)
@@ -163,8 +171,31 @@ class BookEditorModel @Inject constructor(
         }
     }
 
+    /** Exports the current editor snapshot to a separate document; it never replaces the source. */
+    suspend fun exportCorrectedCopy(destination: Uri): Boolean {
+        val current = _state.value
+        val book = current.book ?: return false
+        if (current.isSaving || current.isExporting || current.isLoading) return false
+        val snapshot = current.text.toList()
+        _state.value = current.copy(isExporting = true, errorMessage = null)
+
+        return try {
+            withContext(Dispatchers.IO) {
+                exportEditedBook(book, snapshot, destination)
+            }
+            _state.value = _state.value.copy(isExporting = false, errorMessage = null)
+            true
+        } catch (_: Exception) {
+            _state.value = _state.value.copy(
+                isExporting = false
+            )
+            false
+        }
+    }
+
     suspend fun restoreOriginal(): Boolean {
         val book = _state.value.book ?: return false
+        if (_state.value.isSaving || _state.value.isExporting) return false
         _state.value = _state.value.copy(isSaving = true, errorMessage = null)
         return try {
             bookRepository.clearBookTextEdits(book.id)

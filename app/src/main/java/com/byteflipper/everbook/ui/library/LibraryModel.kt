@@ -172,6 +172,7 @@ class LibraryModel @Inject constructor(
                     _state.update {
                         it.copy(
                             books = it.books.map { book -> book.copy(selected = false) },
+                            selectedItemsCount = 0,
                             hasSelectedItems = false
                         )
                     }
@@ -220,6 +221,7 @@ class LibraryModel @Inject constructor(
                                     selected = false
                                 )
                             },
+                            selectedItemsCount = 0,
                             hasSelectedItems = false,
                             dialog = null
                         )
@@ -259,6 +261,7 @@ class LibraryModel @Inject constructor(
                     _state.update {
                         it.copy(
                             books = it.books.filter { book -> !book.selected },
+                            selectedItemsCount = 0,
                             hasSelectedItems = false,
                             dialog = null
                         )
@@ -321,6 +324,7 @@ class LibraryModel @Inject constructor(
         _state.update {
             it.copy(
                 books = books,
+                selectedItemsCount = 0,
                 hasSelectedItems = false,
                 isLoading = false
             )

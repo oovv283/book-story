@@ -37,7 +37,11 @@ interface BookDao {
     @Query(
         """
         SELECT * FROM bookentity
-        WHERE LOWER(title) LIKE '%' || LOWER(:query) || '%'
+        WHERE :query = ''
+           OR INSTR(LOWER(title), LOWER(:query)) > 0
+           OR INSTR(LOWER(COALESCE(author, '')), LOWER(:query)) > 0
+           OR INSTR(LOWER(COALESCE(description, '')), LOWER(:query)) > 0
+           OR INSTR(LOWER(filePath), LOWER(:query)) > 0
     """
     )
     suspend fun searchBooks(query: String): List<BookEntity>
@@ -53,6 +57,9 @@ interface BookDao {
 
     @Query("UPDATE bookentity SET categoryId = :categoryId WHERE id IN (:bookIds)")
     suspend fun updateCategoryForBooks(bookIds: List<Int>, categoryId: Int)
+
+    @Query("UPDATE bookentity SET categoryId = :targetId WHERE categoryId = :sourceId")
+    suspend fun replacePrimaryCategory(sourceId: Int, targetId: Int)
 
     @Delete
     suspend fun deleteBooks(books: List<BookEntity>)

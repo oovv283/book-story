@@ -24,6 +24,7 @@ import com.byteflipper.everbook.data.parser.FileParserImpl
 import com.byteflipper.everbook.data.parser.TextParser
 import com.byteflipper.everbook.data.parser.TextParserImpl
 import com.byteflipper.everbook.data.repository.BookRepositoryImpl
+import com.byteflipper.everbook.data.repository.BookExportRepositoryImpl
 import com.byteflipper.everbook.data.repository.BookTranslationRepositoryImpl
 import com.byteflipper.everbook.data.repository.BookTranslationWorkSchedulerImpl
 import com.byteflipper.everbook.data.repository.ColorPresetRepositoryImpl
@@ -35,6 +36,7 @@ import com.byteflipper.everbook.data.repository.StatisticsRepositoryImpl
 import com.byteflipper.everbook.data.repository.BookmarkRepositoryImpl
 import com.byteflipper.everbook.data.repository.ChangelogRepositoryImpl
 import com.byteflipper.everbook.domain.repository.BookRepository
+import com.byteflipper.everbook.domain.repository.BookExportRepository
 import com.byteflipper.everbook.domain.repository.BookTranslationRepository
 import com.byteflipper.everbook.domain.repository.BookTranslationWorkScheduler
 import com.byteflipper.everbook.domain.repository.ColorPresetRepository
@@ -65,6 +67,12 @@ abstract class RepositoryModule {
     abstract fun bindBookRepository(
         bookRepositoryImpl: BookRepositoryImpl
     ): BookRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindBookExportRepository(
+        bookExportRepositoryImpl: BookExportRepositoryImpl
+    ): BookExportRepository
 
     @Binds
     @Singleton

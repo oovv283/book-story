@@ -921,6 +921,14 @@
     <string name="book_editor_save">حفظ التعديلات</string>
     <string name="book_editor_saved">تم حفظ التعديلات</string>
     <string name="book_editor_save_error">تعذّر الحفظ: %1$s</string>
+    <string name="book_editor_export_copy">تصدير نسخة مصححة</string>
+    <string name="book_editor_export_name_suffix"> - نسخة مصححة</string>
+    <string name="book_editor_exported">تم حفظ النسخة المصححة والتحقق منها؛ الملف الأصلي ما تغيّر.</string>
+    <string name="book_editor_export_failed">تعذّر إنشاء نسخة موثوقة؛ الملف الأصلي ما تغيّر.</string>
+    <string name="book_editor_export_cancelled_after_save">تعديلاتك محفوظة داخل التطبيق؛ ما صدرنا ملف مستقل.</string>
+    <string name="book_editor_export_unsupported">التصدير الآمن لهالصيغة ما تأكد إلى الآن. تعديلات التطبيق تبقى منفصلة عن الأصل.</string>
+    <string name="book_editor_saved_export_unsupported">تعديلاتك محفوظة داخل التطبيق، لكن ما نقدر نطلع نسخة منفصلة آمنة لهالصيغة إلى الآن.</string>
+    <string name="book_editor_exporting">جارٍ التصدير…</string>
     <string name="book_editor_unsaved">غير محفوظ</string>
     <string name="book_editor_undo_count">تراجع (%1$d)</string>
     <string name="book_editor_redo_count">إعادة (%1$d)</string>

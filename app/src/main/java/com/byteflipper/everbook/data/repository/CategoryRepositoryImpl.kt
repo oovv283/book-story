@@ -9,6 +9,7 @@ package com.byteflipper.everbook.data.repository
 
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import androidx.room.withTransaction
 import javax.inject.Inject
 import javax.inject.Singleton
 import com.byteflipper.everbook.data.local.room.CategoryDao
@@ -18,11 +19,16 @@ import com.byteflipper.everbook.domain.repository.CategoryRepository
 import com.byteflipper.everbook.domain.library.display.LibrarySortOrder
 import com.byteflipper.everbook.data.local.dto.CategoryEntity
 import com.byteflipper.everbook.data.local.room.BookDao
+import com.byteflipper.everbook.data.local.room.BookCategoryDao
+import com.byteflipper.everbook.data.local.room.BookDatabase
 
 @Singleton
 class CategoryRepositoryImpl @Inject constructor(
     private val categoryDao: CategoryDao,
     private val mapper: CategoryMapper,
+    private val database: BookDatabase,
+    private val bookDao: BookDao,
+    private val bookCategoryDao: BookCategoryDao
 ) : CategoryRepository {
 
     override fun observeCategories(): Flow<List<Category>> {
@@ -69,8 +75,16 @@ class CategoryRepositoryImpl @Inject constructor(
         // and the default system categories (SYSTEM: Reading / Already read / Planning / Dropped)
         // are permanent — deleting them would orphan books and break the library tabs.
         if (entity.kind != "CUSTOM") return
+        val destinationId = targetId
+            ?.takeIf { it != id && categoryDao.findById(it) != null }
+            ?: 0
 
-        categoryDao.delete(entity)
+        database.withTransaction {
+            bookCategoryDao.copyCategoryMembers(sourceId = id, targetId = destinationId)
+            bookCategoryDao.deleteByCategory(id)
+            bookDao.replacePrimaryCategory(sourceId = id, targetId = destinationId)
+            categoryDao.delete(entity)
+        }
     }
 
     override suspend fun reorderCategories(order: List<Int>) {
