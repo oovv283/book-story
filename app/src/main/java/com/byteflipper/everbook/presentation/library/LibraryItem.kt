@@ -6,7 +6,6 @@
  */
 
 package com.byteflipper.everbook.presentation.library
-import androidx.compose.ui.res.painterResource
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
@@ -22,11 +21,15 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -34,6 +37,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -41,6 +45,7 @@ import com.byteflipper.everbook.R
 import com.byteflipper.everbook.domain.library.book.SelectableBook
 import com.byteflipper.everbook.domain.library.display.LibraryLayout
 import com.byteflipper.everbook.domain.library.display.LibraryTitlePosition
+import com.byteflipper.everbook.domain.reader.isEditableBookFormat
 import com.byteflipper.everbook.presentation.core.components.common.AsyncCoverImage
 import com.byteflipper.everbook.presentation.core.components.common.StyledText
 import com.byteflipper.everbook.presentation.core.util.calculateProgress
@@ -55,7 +60,8 @@ fun LibraryItem(
     showProgress: Boolean,
     selectBook: (select: Boolean?) -> Unit,
     navigateToBookInfo: () -> Unit,
-    navigateToReader: () -> Unit
+    navigateToReader: () -> Unit,
+    navigateToBookEditor: () -> Unit
 ) {
     when (layout) {
         LibraryLayout.LIST -> LibraryListItem(
@@ -65,7 +71,8 @@ fun LibraryItem(
             showProgress = showProgress,
             selectBook = selectBook,
             navigateToBookInfo = navigateToBookInfo,
-            navigateToReader = navigateToReader
+            navigateToReader = navigateToReader,
+            navigateToBookEditor = navigateToBookEditor
         )
 
         LibraryLayout.GRID -> LibraryGridItem(
@@ -76,7 +83,8 @@ fun LibraryItem(
             showProgress = showProgress,
             selectBook = selectBook,
             navigateToBookInfo = navigateToBookInfo,
-            navigateToReader = navigateToReader
+            navigateToReader = navigateToReader,
+            navigateToBookEditor = navigateToBookEditor
         )
     }
 }
@@ -90,8 +98,10 @@ private fun LibraryGridItem(
     showProgress: Boolean,
     selectBook: (select: Boolean?) -> Unit,
     navigateToBookInfo: () -> Unit,
-    navigateToReader: () -> Unit
+    navigateToReader: () -> Unit,
+    navigateToBookEditor: () -> Unit
 ) {
+    val showActionsMenu = remember(book.data.id) { mutableStateOf(false) }
     val backgroundColor = if (book.selected) MaterialTheme.colorScheme.secondary
     else Color.Transparent
     val belowFontColor = if (book.selected) MaterialTheme.colorScheme.onSecondary
@@ -132,7 +142,7 @@ private fun LibraryGridItem(
                         else navigateToBookInfo()
                     },
                     onLongClick = {
-                        if (!hasSelectedItems) selectBook(true)
+                        if (!hasSelectedItems) showActionsMenu.value = true
                     }
                 )
         ) {
@@ -217,6 +227,20 @@ private fun LibraryGridItem(
                     }
                 }
             }
+
+            BookActionsMenu(
+                expanded = showActionsMenu.value,
+                showEdit = book.data.filePath.isEditableBookFormat(),
+                onDismiss = { showActionsMenu.value = false },
+                onEdit = {
+                    showActionsMenu.value = false
+                    navigateToBookEditor()
+                },
+                onSelect = {
+                    showActionsMenu.value = false
+                    selectBook(true)
+                }
+            )
         }
 
         if (titlePosition == LibraryTitlePosition.BELOW) {
@@ -245,8 +269,10 @@ private fun LibraryListItem(
     showProgress: Boolean,
     selectBook: (select: Boolean?) -> Unit,
     navigateToBookInfo: () -> Unit,
-    navigateToReader: () -> Unit
+    navigateToReader: () -> Unit,
+    navigateToBookEditor: () -> Unit
 ) {
+    val showActionsMenu = remember(book.data.id) { mutableStateOf(false) }
     val backgroundColor = if (book.selected) MaterialTheme.colorScheme.secondaryContainer
     else Color.Transparent
     val fontColor = if (book.selected) MaterialTheme.colorScheme.onSecondaryContainer
@@ -268,7 +294,7 @@ private fun LibraryListItem(
                     else navigateToBookInfo()
                 },
                 onLongClick = {
-                    if (!hasSelectedItems) selectBook(true)
+                    if (!hasSelectedItems) showActionsMenu.value = true
                 }
             )
             .padding(8.dp),
@@ -343,5 +369,56 @@ private fun LibraryListItem(
                 )
             }
         }
+
+        BookActionsMenu(
+            expanded = showActionsMenu.value,
+            showEdit = book.data.filePath.isEditableBookFormat(),
+            onDismiss = { showActionsMenu.value = false },
+            onEdit = {
+                showActionsMenu.value = false
+                navigateToBookEditor()
+            },
+            onSelect = {
+                showActionsMenu.value = false
+                selectBook(true)
+            }
+        )
+    }
+}
+
+@Composable
+private fun BookActionsMenu(
+    expanded: Boolean,
+    showEdit: Boolean,
+    onDismiss: () -> Unit,
+    onEdit: () -> Unit,
+    onSelect: () -> Unit
+) {
+    DropdownMenu(
+        expanded = expanded,
+        onDismissRequest = onDismiss
+    ) {
+        if (showEdit) {
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.edit_book)) },
+                leadingIcon = {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_edit_rounded_24px),
+                        contentDescription = null
+                    )
+                },
+                onClick = onEdit
+            )
+        }
+        DropdownMenuItem(
+            text = { Text(stringResource(R.string.select_book)) },
+            leadingIcon = {
+                Icon(
+                    painter = painterResource(R.drawable.ic_check_rounded_24px),
+                    contentDescription = null
+                )
+            },
+            onClick = onSelect
+        )
     }
 }

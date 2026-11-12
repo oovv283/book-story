@@ -38,6 +38,7 @@ import com.byteflipper.everbook.domain.navigator.Screen
 import com.byteflipper.everbook.domain.ui.UIText
 import com.byteflipper.everbook.presentation.library.LibraryContent
 import com.byteflipper.everbook.presentation.navigator.LocalNavigator
+import com.byteflipper.everbook.ui.book_editor.BookEditorScreen
 import com.byteflipper.everbook.ui.book_info.BookInfoScreen
 import com.byteflipper.everbook.ui.browse.BrowseScreen
 import com.byteflipper.everbook.ui.history.HistoryScreen
@@ -313,6 +314,9 @@ object LibraryScreen : Screen, Parcelable {
             navigateToReader = {
                 HistoryScreen.insertHistoryChannel.trySend(it)
                 navigator.push(ReaderScreen(it))
+            },
+            navigateToBookEditor = {
+                navigator.push(BookEditorScreen(bookId = it))
             },
             navigateToBookInfo = {
                 navigator.push(BookInfoScreen(bookId = it))

@@ -27,6 +27,13 @@ interface BookRepository {
         onChunk: (suspend (List<ReaderText>) -> Unit)? = null
     ): List<ReaderText>
 
+    suspend fun saveBookTextEdits(
+        bookId: Int,
+        editedText: List<ReaderText>
+    )
+
+    suspend fun clearBookTextEdits(bookId: Int)
+
     suspend fun insertBook(
         bookWithCover: BookWithCover
     ): Int

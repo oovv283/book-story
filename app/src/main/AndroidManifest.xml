@@ -11,7 +11,7 @@
 
     <!-- Removing DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION, which is not used -->
     <uses-permission
-        android:name="com.byteflipper.everbook.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION"
+        android:name="${applicationId}.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION"
         tools:node="remove" />
 
     <!-- Removing READ_EXTERNAL_STORAGE and WRITE_EXTERNAL_STORAGE explicitly -->

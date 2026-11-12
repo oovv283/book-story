@@ -203,6 +203,7 @@ fun ReaderScaffold(
     showOriginalBook: (ReaderEvent.OnShowOriginalBook) -> Unit,
     changePdfReadingMode: (ReaderEvent.OnChangePdfReadingMode) -> Unit,
     navigateToBookInfo: (changePath: Boolean) -> Unit,
+    navigateToBookEditor: () -> Unit,
     navigateBack: () -> Unit
 ) {
     var isDetachedTranslationStatusDismissed by rememberSaveable(book.id) {
@@ -256,7 +257,8 @@ fun ReaderScaffold(
                     showChaptersDrawer = showChaptersDrawer,
                     showBookmarksDrawer = showBookmarksDrawer,
                     navigateBack = navigateBack,
-                    navigateToBookInfo = navigateToBookInfo
+                    navigateToBookInfo = navigateToBookInfo,
+                    navigateToBookEditor = navigateToBookEditor
                 )
             }
         },

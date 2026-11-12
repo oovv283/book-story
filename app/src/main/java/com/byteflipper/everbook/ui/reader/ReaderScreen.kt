@@ -46,6 +46,10 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.parcelize.Parcelize
 import com.byteflipper.everbook.domain.distribution.ReaderInlineContentMode
 import com.byteflipper.everbook.domain.navigator.Screen
@@ -63,6 +67,7 @@ import com.byteflipper.everbook.presentation.pdf_reader.PdfReaderContent
 import com.byteflipper.everbook.presentation.reader.buildReaderDisplayContent
 import com.byteflipper.everbook.presentation.reader.ReaderContent
 import com.byteflipper.everbook.ui.main.MainEvent
+import com.byteflipper.everbook.ui.book_editor.BookEditorScreen
 import com.byteflipper.everbook.ui.book_info.BookInfoScreen
 import com.byteflipper.everbook.ui.main.MainModel
 import com.byteflipper.everbook.ui.pdf_reader.PdfReaderEvent
@@ -80,6 +85,7 @@ data class ReaderScreen(val bookId: Int) : Screen, Parcelable {
         const val PDF_READING_MODE_BOTTOM_SHEET = "pdf_reading_mode_bottom_sheet"
         const val TRANSLATION_BOTTOM_SHEET = "translation_bottom_sheet"
         const val BOOK_TRANSLATION_BOTTOM_SHEET = "book_translation_bottom_sheet"
+        val reloadEditedBookChannel: Channel<Int> = Channel(Channel.CONFLATED)
     }
 
     @OptIn(ExperimentalLayoutApi::class)
@@ -108,6 +114,23 @@ data class ReaderScreen(val bookId: Int) : Screen, Parcelable {
         }
 
         val activity = LocalActivity.current
+        LaunchedEffect(bookId) {
+            reloadEditedBookChannel.receiveAsFlow().collectLatest { editedBookId ->
+                if (editedBookId == bookId) {
+                    snapshotFlow {
+                        state.value.book.id == bookId &&
+                                !state.value.isLoading &&
+                                !state.value.isParsing
+                    }.first { it }
+                    screenModel.onEvent(
+                        ReaderEvent.OnLoadText(
+                            activity = activity,
+                            fullscreenMode = mainState.value.fullscreen
+                        )
+                    )
+                }
+            }
+        }
         val density = LocalDensity.current
         val listState = rememberSaveable(
             state.value.listState,
@@ -857,6 +880,14 @@ data class ReaderScreen(val bookId: Int) : Screen, Parcelable {
                         ),
                         popping = true,
                         saveInBackStack = false
+                    )
+                },
+                navigateToBookEditor = {
+                    navigator.push(
+                        BookEditorScreen(
+                            bookId = bookId,
+                            returnToReader = true
+                        )
                     )
                 }
             )

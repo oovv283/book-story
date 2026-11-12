@@ -1,0 +1,110 @@
+name: ARM64 test APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - master
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Test and package ARM64 APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    env:
+      GITHUB_TOKEN: ${{ github.token }}
+      EVERBOOK_TEST_KEYSTORE_B64: ${{ secrets.EVERBOOK_TEST_KEYSTORE_B64 }}
+      EVERBOOK_TEST_KEY_PASSWORD: ${{ secrets.EVERBOOK_TEST_KEY_PASSWORD }}
+      EVERBOOK_TEST_CERT_SHA256: ${{ vars.EVERBOOK_TEST_CERT_SHA256 }}
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android 36 SDK packages
+        run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Set up Gradle cache
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Run editor search tests and build the ARM64 APK
+        run: |
+          ci_version_code=$((17 + GITHUB_RUN_NUMBER))
+          echo "CI versionCode=$ci_version_code"
+          bash gradlew --no-daemon --stacktrace :app:testEverbookDebugUnitTest :app:assembleEverbookDebug -Parm64Only=true -PciVersionCode="$ci_version_code"
+
+      - name: Verify package, version, ABI output, and stable signing certificate
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t apks < <(find app/build/outputs/apk/everbook/debug -maxdepth 1 -type f -name '*.apk' -print | sort)
+          if [[ ${#apks[@]} -ne 1 ]]; then
+            echo "Expected exactly one ABI-specific APK, found ${#apks[@]}"
+            printf '%s\n' "${apks[@]}"
+            exit 1
+          fi
+          apk="${apks[0]}"
+          if [[ "$apk" != *"arm64-v8a"* ]]; then
+            echo "Unexpected APK name; expected arm64-v8a: $apk"
+            exit 1
+          fi
+
+          android_sdk="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
+          if [[ -z "$android_sdk" ]]; then
+            echo "Android SDK path is not configured"
+            exit 1
+          fi
+          aapt="$android_sdk/build-tools/36.0.0/aapt"
+          apksigner="$android_sdk/build-tools/36.0.0/apksigner"
+          expected_version_code=$((17 + GITHUB_RUN_NUMBER))
+          badging=$("$aapt" dump badging "$apk")
+          package_info=$(printf '%s\n' "$badging" | head -n 1)
+          if ! grep -Fq "package: name='com.byteflipper.everbook.edit' versionCode='$expected_version_code'" <<< "$package_info"; then
+            echo "Unexpected package metadata: $package_info"
+            exit 1
+          fi
+          if ! grep -Fq "application-label:'EverBook Edit'" <<< "$badging"; then
+            echo "The APK does not have the expected EverBook Edit launcher label."
+            exit 1
+          fi
+
+          expected_fingerprint=$(printf '%s' "$EVERBOOK_TEST_CERT_SHA256" | tr -d ':' | tr '[:upper:]' '[:lower:]')
+          keystore_fingerprint=$(keytool -list -v \
+            -keystore app/build/generated/test-signing/everbook-test.keystore \
+            -storepass:env EVERBOOK_TEST_KEY_PASSWORD \
+            -alias everbook-test 2>/dev/null \
+            | sed -n 's/^[[:space:]]*SHA256: //p' | head -n 1 | tr -d ':' | tr '[:upper:]' '[:lower:]')
+          signing_report=$("$apksigner" verify --verbose --print-certs "$apk")
+          apk_fingerprint=$(printf '%s\n' "$signing_report" \
+            | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' \
+            | head -n 1 | tr -d ':' | tr '[:upper:]' '[:lower:]')
+          if [[ ${#expected_fingerprint} -ne 64 || "$keystore_fingerprint" != "$expected_fingerprint" || "$apk_fingerprint" != "$expected_fingerprint" ]]; then
+            echo "APK signer does not match the stable EverBook Edit test certificate."
+            exit 1
+          fi
+
+          echo "Verified applicationId=com.byteflipper.everbook.edit, versionCode=$expected_version_code, ABI=arm64-v8a, and stable signing certificate."
+          sha256sum "$apk"
+          printf '%s\n' "$signing_report"
+
+      - name: Upload test APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: book-story-arm64-test-apk
+          path: app/build/outputs/apk/everbook/debug/*arm64-v8a*.apk
+          if-no-files-found: error
+          retention-days: 14

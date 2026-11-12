@@ -59,6 +59,7 @@ fun LibraryScaffold(
     navigateToBrowse: () -> Unit,
     navigateToBookInfo: (id: Int) -> Unit,
     navigateToReader: (id: Int) -> Unit,
+    navigateToBookEditor: (id: Int) -> Unit,
 ) {
     Scaffold(
         Modifier
@@ -112,6 +113,7 @@ fun LibraryScaffold(
                 navigateToBrowse = navigateToBrowse,
                 navigateToReader = navigateToReader,
                 navigateToBookInfo = navigateToBookInfo,
+                navigateToBookEditor = navigateToBookEditor,
             )
 
             LibraryRefreshIndicator(

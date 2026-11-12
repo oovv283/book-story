@@ -11,6 +11,18 @@ plugins {
     id("androidx.room")
 }
 
+val arm64OnlyApk = providers.gradleProperty("arm64Only").orNull == "true"
+val ciVersionCode = providers.gradleProperty("ciVersionCode").orNull?.toIntOrNull()
+val testDebugKeystoreBase64 = System.getenv("EVERBOOK_TEST_KEYSTORE_B64")
+val testDebugKeystorePassword = System.getenv("EVERBOOK_TEST_KEY_PASSWORD")
+val testDebugKeystore = layout.buildDirectory.file("generated/test-signing/everbook-test.keystore").get().asFile
+val useFixedTestSigning = !testDebugKeystoreBase64.isNullOrBlank() &&
+    !testDebugKeystorePassword.isNullOrBlank()
+if (useFixedTestSigning) {
+    testDebugKeystore.parentFile.mkdirs()
+    testDebugKeystore.writeBytes(java.util.Base64.getDecoder().decode(testDebugKeystoreBase64))
+}
+
 // Google Services (Firebase + Crashlytics) are only needed by the playStore flavor.
 // Apply the plugins unless the build is exclusively for a Google-free flavor (everbook / ruStore),
 // in which case applying them would fail for the missing google-services.json.
@@ -33,12 +45,23 @@ android {
         applicationId = "com.byteflipper.everbook"
         minSdk = 26
         targetSdk = 36
-        versionCode = 17
+        versionCode = ciVersionCode ?: 17
         versionName = "1.7.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
             useSupportLibrary = true
+        }
+    }
+
+    splits {
+        abi {
+            isEnable = arm64OnlyApk
+            if (arm64OnlyApk) {
+                reset()
+                include("arm64-v8a")
+                isUniversalApk = false
+            }
         }
     }
 
@@ -50,6 +73,7 @@ android {
     productFlavors {
         create("everbook") {
             dimension = "distribution"
+            applicationIdSuffix = ".edit"
         }
 
         create("playStore") {
@@ -101,10 +125,21 @@ android {
             keyAlias = prop("RELEASE_KEY_ALIAS") ?: ""
             keyPassword = prop("RELEASE_KEY_PASSWORD") ?: ""
         }
+        if (useFixedTestSigning) {
+            create("testDebug") {
+                storeFile = testDebugKeystore
+                storePassword = testDebugKeystorePassword
+                keyAlias = "everbook-test"
+                keyPassword = testDebugKeystorePassword
+            }
+        }
     }
 
     buildTypes {
         getByName("debug") {
+            if (useFixedTestSigning) {
+                signingConfig = signingConfigs.getByName("testDebug")
+            }
             manifestPlaceholders["adMobAppId"] = "ca-app-pub-3940256099942544~3347511713"
         }
 
@@ -153,6 +188,7 @@ aboutLibraries {
     registerAndroidTasks = false
     prettyPrint = true
     gitHubApiToken = gradleLocalProperties(rootDir, providers)["github-key"] as? String
+        ?: System.getenv("GITHUB_TOKEN")
 
     filterVariants = arrayOf(
         "everbookDebug",
@@ -179,6 +215,7 @@ dependencies {
 
     // Core
     implementation("androidx.core:core-ktx:1.16.0")
+    testImplementation("junit:junit:4.13.2")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.10.0")
     implementation("androidx.lifecycle:lifecycle-process:2.10.0")
     implementation("androidx.activity:activity-compose:1.13.0")

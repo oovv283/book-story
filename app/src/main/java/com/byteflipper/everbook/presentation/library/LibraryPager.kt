@@ -39,6 +39,7 @@ fun LibraryPager(
     navigateToBrowse: () -> Unit,
     navigateToBookInfo: (id: Int) -> Unit,
     navigateToReader: (id: Int) -> Unit,
+    navigateToBookEditor: (id: Int) -> Unit,
 ) {
     HorizontalPager(
         state = pagerState,
@@ -80,6 +81,7 @@ fun LibraryPager(
                         },
                         navigateToBookInfo = { navigateToBookInfo(book.data.id) },
                         navigateToReader = { navigateToReader(book.data.id) },
+                        navigateToBookEditor = { navigateToBookEditor(book.data.id) },
                     )
                 }
             }

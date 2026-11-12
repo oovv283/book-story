@@ -16,6 +16,7 @@ import android.util.Log
 import androidx.core.net.toUri
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import com.byteflipper.everbook.data.editor.BookTextEditStore
 import com.byteflipper.everbook.data.cache.ReaderTextCache
 import com.byteflipper.everbook.data.di.ApplicationScope
 import com.byteflipper.everbook.data.local.room.BookDao
@@ -65,6 +66,7 @@ class BookRepositoryImpl @Inject constructor(
     private val fileParser: FileParser,
     private val textParser: TextParser,
     private val readerTextCache: ReaderTextCache,
+    private val bookTextEditStore: BookTextEditStore,
     private val bookTranslationRepository: BookTranslationRepository,
     private val bookTranslationWorkScheduler: BookTranslationWorkScheduler,
     private val dataStoreRepository: DataStoreRepository,
@@ -139,16 +141,29 @@ class BookRepositoryImpl @Inject constructor(
 
         readerTextCache.cancelWarmUp(bookId)
 
-        readerTextCache.read(bookId, cachedFile, onChunk)
+        val edits = bookTextEditStore.load(bookId, cachedFile)
+        var streamedTextIndex = 0
+        val cacheChunkCallback: (suspend (List<ReaderText>) -> Unit)? = onChunk?.let { receiver ->
+            { chunk ->
+                val startIndex = streamedTextIndex
+                streamedTextIndex += chunk.size
+                receiver(bookTextEditStore.apply(chunk, edits, startIndex))
+            }
+        }
+
+        readerTextCache.read(bookId, cachedFile, cacheChunkCallback)
             ?.takeIf { it.hasReadableReaderText() }
             ?.let { readerText ->
                 Log.i(GET_TEXT, "Successfully loaded cached text of [$bookId].")
-                return readerText
+                return bookTextEditStore.apply(readerText, edits)
             }
 
+        streamedTextIndex = 0
         val readerText = textParser.parse(cachedFile) { chunk ->
             if (chunk.isNotEmpty()) {
-                onChunk?.invoke(chunk)
+                val startIndex = streamedTextIndex
+                streamedTextIndex += chunk.size
+                onChunk?.invoke(bookTextEditStore.apply(chunk, edits, startIndex))
             }
         }
 
@@ -162,7 +177,23 @@ class BookRepositoryImpl @Inject constructor(
         }
 
         Log.i(GET_TEXT, "Successfully loaded text of [$bookId] with markdown.")
-        return readerText
+        return bookTextEditStore.apply(readerText, edits)
+    }
+
+    override suspend fun saveBookTextEdits(bookId: Int, editedText: List<ReaderText>) =
+        withContext(Dispatchers.IO) {
+            require(bookId != -1) { "A book must be selected before editing." }
+            val book = database.findBookById(bookId)
+            val cachedFile = getCachedFile(book.filePath)
+                ?: throw IllegalStateException("The source book is no longer available.")
+            if (!cachedFile.canAccess()) {
+                throw IllegalStateException("The source book is no longer accessible.")
+            }
+            bookTextEditStore.save(bookId, cachedFile, editedText)
+        }
+
+    override suspend fun clearBookTextEdits(bookId: Int) {
+        bookTextEditStore.delete(bookId)
     }
 
     /**
@@ -361,6 +392,7 @@ class BookRepositoryImpl @Inject constructor(
         for (b in books) {
             bookCategoryDao.deleteByBook(b.id)
             readerTextCache.delete(b.id)
+            bookTextEditStore.delete(b.id)
             bookTranslationRepository.getTranslations(b.id).forEach { translation ->
                 bookTranslationWorkScheduler.cancel(translation.id)
             }

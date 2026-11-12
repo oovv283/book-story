@@ -28,6 +28,7 @@ import androidx.compose.ui.unit.sp
 import com.byteflipper.everbook.R
 import com.byteflipper.everbook.domain.library.book.Book
 import com.byteflipper.everbook.domain.reader.ReaderText.Chapter
+import com.byteflipper.everbook.domain.reader.isEditableBookFormat
 import com.byteflipper.everbook.presentation.core.components.common.IconButton
 import com.byteflipper.everbook.presentation.core.components.common.StyledText
 import com.byteflipper.everbook.presentation.core.util.LocalActivity
@@ -54,6 +55,7 @@ fun ReaderTopBar(
     showChaptersDrawer: (ReaderEvent.OnShowChaptersDrawer) -> Unit,
     showBookmarksDrawer: (ReaderEvent.OnShowBookmarksDrawer) -> Unit,
     navigateToBookInfo: (changePath: Boolean) -> Unit,
+    navigateToBookEditor: () -> Unit,
     navigateBack: () -> Unit
 ) {
     val activity = LocalActivity.current
@@ -145,6 +147,17 @@ fun ReaderTopBar(
                     enabled = !lockMenu
                 ) {
                     showBookmarksDrawer(ReaderEvent.OnShowBookmarksDrawer)
+                }
+
+                if (book.filePath.isEditableBookFormat()) {
+                    IconButton(
+                        icon = R.drawable.ic_edit_rounded_24px,
+                        contentDescription = R.string.edit_book,
+                        disableOnClick = false,
+                        enabled = !lockMenu
+                    ) {
+                        navigateToBookEditor()
+                    }
                 }
 
                 if (book.filePath.endsWith(".pdf", ignoreCase = true)) {

@@ -62,7 +62,8 @@ fun LibraryContent(
     dismissBottomSheet: (LibraryEvent.OnDismissBottomSheet) -> Unit,
     navigateToBrowse: () -> Unit,
     navigateToBookInfo: (id: Int) -> Unit,
-    navigateToReader: (id: Int) -> Unit
+    navigateToReader: (id: Int) -> Unit,
+    navigateToBookEditor: (id: Int) -> Unit
 ) {
     LibraryDialog(
         dialog = dialog,
@@ -111,7 +112,8 @@ fun LibraryContent(
         refreshState = refreshState,
         navigateToBrowse = navigateToBrowse,
         navigateToBookInfo = navigateToBookInfo,
-        navigateToReader = navigateToReader
+        navigateToReader = navigateToReader,
+        navigateToBookEditor = navigateToBookEditor
     )
 
     LibraryBackHandler(

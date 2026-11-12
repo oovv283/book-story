@@ -196,6 +196,7 @@ fun ReaderContent(
     changePdfReadingMode: (ReaderEvent.OnChangePdfReadingMode) -> Unit,
     changePdfDefaultReadingMode: (PdfReadingMode) -> Unit,
     navigateToBookInfo: (changePath: Boolean) -> Unit,
+    navigateToBookEditor: () -> Unit,
     navigateBack: () -> Unit
 ) {
     val annotationTopOffsets = remember { mutableStateMapOf<Int, Float>() }
@@ -385,7 +386,8 @@ fun ReaderContent(
             showOriginalBook = showOriginalBook,
             changePdfReadingMode = changePdfReadingMode,
             navigateBack = navigateBack,
-            navigateToBookInfo = navigateToBookInfo
+            navigateToBookInfo = navigateToBookInfo,
+            navigateToBookEditor = navigateToBookEditor
         )
     } else {
         ReaderErrorPlaceholder(
