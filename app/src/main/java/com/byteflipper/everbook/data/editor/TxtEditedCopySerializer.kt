@@ -61,8 +61,10 @@ internal object TxtEditedCopySerializer {
                     }
                     requireSingleSourceLine(editedEntry.title)
                     val oldLine = outputLines[sourceRef.sourceLine]
-                    if (oldLine.text != editedEntry.title) {
-                        outputLines[sourceRef.sourceLine] = oldLine.copy(text = editedEntry.title)
+                    if (oldLine.text.clearAllMarkdown() != editedEntry.title) {
+                        outputLines[sourceRef.sourceLine] = oldLine.copy(
+                            text = replaceTitleSourceLine(oldLine.text, editedEntry.title)
+                        )
                         changed = true
                     }
                 }
@@ -182,6 +184,22 @@ internal object TxtEditedCopySerializer {
         require('\n' !in value && '\r' !in value) {
             "Line breaks cannot be safely represented by the current TXT editor export."
         }
+    }
+
+    private fun replaceTitleSourceLine(source: String, title: String): String {
+        val leadingWhitespace = source.takeWhile(Char::isWhitespace)
+        val afterLeadingWhitespace = source.drop(leadingWhitespace.length)
+        val headingMarks = afterLeadingWhitespace.takeWhile { it == '#' }
+        val afterHeadingMarks = afterLeadingWhitespace.drop(headingMarks.length)
+        val headingGap = afterHeadingMarks.takeWhile(Char::isWhitespace)
+        val formattedTitle = afterHeadingMarks.drop(headingGap.length)
+        val trailingWhitespace = formattedTitle.takeLastWhile(Char::isWhitespace)
+        val content = formattedTitle.dropLast(trailingWhitespace.length)
+        val wrapper = listOf("**", "__", "*", "_").firstOrNull {
+            content.length >= it.length * 2 && content.startsWith(it) && content.endsWith(it)
+        }.orEmpty()
+
+        return leadingWhitespace + headingMarks + headingGap + wrapper + title + wrapper + trailingWhitespace
     }
 
     private fun ByteArray.startsWith(prefix: ByteArray): Boolean =

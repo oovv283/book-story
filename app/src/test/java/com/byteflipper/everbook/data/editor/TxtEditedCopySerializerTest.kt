@@ -41,6 +41,20 @@ class TxtEditedCopySerializerTest {
     }
 
     @Test
+    fun editedChapterTitleRetainsHeadingMarkupAndTrailingSpaces() {
+        val source = "## **Old title**  \nParagraph\n".toByteArray(StandardCharsets.UTF_8)
+        val entries = listOf(
+            ReaderText.Chapter(title = "New title", nested = false),
+            text("Paragraph")
+        )
+
+        val actual = TxtEditedCopySerializer.serialize(source, entries)
+            .toString(StandardCharsets.UTF_8)
+
+        assertEquals("## **New title**  \nParagraph\n", actual)
+    }
+
+    @Test
     fun utf16LittleEndianBomIsKeptAndOutputRemainsReadable() {
         val text = "العنوان\r\nفقرة قديمة\r\n"
         val encoded = text.toByteArray(StandardCharsets.UTF_16LE)
