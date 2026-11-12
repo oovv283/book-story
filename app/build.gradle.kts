@@ -1,4 +1,5 @@
 import com.android.build.gradle.internal.cxx.configure.gradleLocalProperties
+import java.util.Base64
 
 plugins {
     id("com.android.application")
@@ -20,7 +21,7 @@ val useFixedTestSigning = !testDebugKeystoreBase64.isNullOrBlank() &&
     !testDebugKeystorePassword.isNullOrBlank()
 if (useFixedTestSigning) {
     testDebugKeystore.parentFile.mkdirs()
-    testDebugKeystore.writeBytes(java.util.Base64.getDecoder().decode(testDebugKeystoreBase64))
+    testDebugKeystore.writeBytes(Base64.getDecoder().decode(testDebugKeystoreBase64))
 }
 
 // Google Services (Firebase + Crashlytics) are only needed by the playStore flavor.
