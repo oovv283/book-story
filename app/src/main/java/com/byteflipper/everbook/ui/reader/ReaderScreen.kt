@@ -138,6 +138,32 @@ data class ReaderScreen(val bookId: Int) : Screen, Parcelable {
         ) {
             state.value.listState
         }
+        val navigationOnlyListState = rememberSaveable(
+            bookId,
+            saver = LazyListState.Saver
+        ) {
+            LazyListState()
+        }
+        val activeNavigationOnlyChapter = state.value.activeNavigationOnlyChapter
+        val activeNavigationOnlyChapterId = activeNavigationOnlyChapter?.id
+        val navigationOnlyText = activeNavigationOnlyChapterId?.let {
+            state.value.navigationOnlyText[it]
+        }.orEmpty()
+        val displayedText = if (activeNavigationOnlyChapterId != null) {
+            navigationOnlyText
+        } else {
+            state.value.text
+        }
+        val displayedListState = if (activeNavigationOnlyChapterId != null) {
+            navigationOnlyListState
+        } else {
+            listState
+        }
+        LaunchedEffect(activeNavigationOnlyChapterId) {
+            if (activeNavigationOnlyChapterId != null && navigationOnlyText.isNotEmpty()) {
+                navigationOnlyListState.scrollToItem(0)
+            }
+        }
         val pdfListState = rememberSaveable(
             pdfState.value.listState,
             saver = LazyListState.Saver
@@ -342,12 +368,23 @@ data class ReaderScreen(val bookId: Int) : Screen, Parcelable {
             (mainState.value.progressBarFontSize * 2).sp
         }
         val readerDisplayContent = remember(
-            state.value.text,
-            inlineContentState.value.placements
+            displayedText,
+            activeNavigationOnlyChapterId,
+            inlineContentState.value.placements,
+            state.value.hiddenNavigationOnlyTextIndexes
         ) {
             buildReaderDisplayContent(
-                text = state.value.text,
-                inlineContentPlacements = inlineContentState.value.placements
+                text = displayedText,
+                inlineContentPlacements = if (activeNavigationOnlyChapterId == null) {
+                    inlineContentState.value.placements
+                } else {
+                    emptyList()
+                },
+                hiddenTextIndexes = if (activeNavigationOnlyChapterId == null) {
+                    state.value.hiddenNavigationOnlyTextIndexes
+                } else {
+                    emptySet()
+                }
             )
         }
         // Every annotation participates in reader markers and post-navigation focus.
@@ -521,11 +558,12 @@ data class ReaderScreen(val bookId: Int) : Screen, Parcelable {
                 )
             }
         }
-        LaunchedEffect(listState, readerDisplayContent) {
+        LaunchedEffect(listState, readerDisplayContent, activeNavigationOnlyChapterId) {
             screenModel.updateProgress(
                 listState = listState,
                 displayIndexToTextIndex = readerDisplayContent::displayIndexToTextIndex,
-                textIndexToDisplayIndex = readerDisplayContent::textIndexToDisplayIndex
+                textIndexToDisplayIndex = readerDisplayContent::textIndexToDisplayIndex,
+                enabled = activeNavigationOnlyChapterId == null
             )
         }
         LaunchedEffect(pdfListState) {
@@ -537,6 +575,7 @@ data class ReaderScreen(val bookId: Int) : Screen, Parcelable {
         LaunchedEffect(
             listState,
             activePdfMode,
+            activeNavigationOnlyChapterId,
             state.value.text.size,
             readerDisplayContent,
             readerAvailableForInlineContent
@@ -553,7 +592,7 @@ data class ReaderScreen(val bookId: Int) : Screen, Parcelable {
                 )
             }
                 .collect { (index, visibleEndIndex, lastIndex) ->
-                    if (!activePdfMode && lastIndex >= 0) {
+                    if (!activePdfMode && activeNavigationOnlyChapterId == null && lastIndex >= 0) {
                         readerInlineContentModel.onReaderProgress(
                             activity = activity,
                             mode = ReaderInlineContentMode.TEXT,
@@ -710,15 +749,24 @@ data class ReaderScreen(val bookId: Int) : Screen, Parcelable {
         } else {
             ReaderContent(
                 book = state.value.book,
-                text = state.value.text,
+                text = displayedText,
                 displayContent = readerDisplayContent,
-                chapters = state.value.chapters,
+                chapters = state.value.navigationChapters.ifEmpty { state.value.chapters },
+                isNavigationOnlyContent = activeNavigationOnlyChapterId != null,
                 bottomSheet = state.value.bottomSheet,
-                translation = state.value.translation,
+                translation = if (activeNavigationOnlyChapterId == null) {
+                    state.value.translation
+                } else {
+                    ReaderTranslationState()
+                },
                 bookTranslation = state.value.bookTranslation,
                 drawer = state.value.drawer,
                 bookmarks = state.value.bookmarks,
-                highlightsByParagraph = highlightsByParagraph,
+                highlightsByParagraph = if (activeNavigationOnlyChapterId == null) {
+                    highlightsByParagraph
+                } else {
+                    emptyMap()
+                },
                 editingAnnotation = state.value.editingAnnotation,
                 pendingAnnotationText = state.value.pendingAnnotationText,
                 pendingAnnotationColorArgb = state.value.pendingAnnotationColorArgb,
@@ -729,16 +777,28 @@ data class ReaderScreen(val bookId: Int) : Screen, Parcelable {
                 highlightColors = state.value.highlightColors,
                 showHighlightPaletteEditor = state.value.showHighlightPaletteEditor,
                 focusedBookmarkId = state.value.focusedBookmarkId,
-                pendingBookmarkNavigation = state.value.pendingBookmarkNavigation,
-                pendingBookmarkDisplayIndex = state.value.pendingBookmarkDisplayIndex,
-                listState = listState,
-                currentChapter = state.value.currentChapter,
+                pendingBookmarkNavigation = if (activeNavigationOnlyChapterId == null) {
+                    state.value.pendingBookmarkNavigation
+                } else {
+                    null
+                },
+                pendingBookmarkDisplayIndex = if (activeNavigationOnlyChapterId == null) {
+                    state.value.pendingBookmarkDisplayIndex
+                } else {
+                    null
+                },
+                listState = displayedListState,
+                currentChapter = activeNavigationOnlyChapter ?: state.value.currentChapter,
                 nestedScrollConnection = nestedScrollConnection.value,
                 fastColorPresetChange = mainState.value.fastColorPresetChange,
                 perceptionExpander = mainState.value.perceptionExpander,
                 perceptionExpanderPadding = perceptionExpanderPadding,
                 perceptionExpanderThickness = perceptionExpanderThickness,
-                currentChapterProgress = state.value.currentChapterProgress,
+                currentChapterProgress = if (activeNavigationOnlyChapterId == null) {
+                    state.value.currentChapterProgress
+                } else {
+                    0f
+                },
                 isLoading = state.value.isLoading,
                 isParsing = state.value.isParsing,
                 errorMessage = state.value.errorMessage,
@@ -756,8 +816,8 @@ data class ReaderScreen(val bookId: Int) : Screen, Parcelable {
                 horizontalGesturePullAnim = mainState.value.horizontalGesturePullAnim,
                 highlightedReading = mainState.value.highlightedReading,
                 highlightedReadingThickness = highlightedReadingThickness,
-                progress = progress,
-                progressBar = mainState.value.progressBar,
+                progress = if (activeNavigationOnlyChapterId == null) progress else "",
+                progressBar = mainState.value.progressBar && activeNavigationOnlyChapterId == null,
                 progressBarPadding = progressBarPadding,
                 progressBarAlignment = mainState.value.progressBarAlignment,
                 progressBarFontSize = progressBarFontSize,
@@ -809,7 +869,13 @@ data class ReaderScreen(val bookId: Int) : Screen, Parcelable {
                 },
                 selectPreviousPreset = settingsModel::onEvent,
                 selectNextPreset = settingsModel::onEvent,
-                leave = screenModel::onEvent,
+                leave = { leaveEvent ->
+                    if (activeNavigationOnlyChapterId != null) {
+                        screenModel.onEvent(ReaderEvent.OnCloseNavigationOnlyChapter)
+                    } else {
+                        screenModel.onEvent(leaveEvent)
+                    }
+                },
                 restoreCheckpoint = screenModel::onEvent,
                 scroll = screenModel::onEvent,
                 changeProgress = screenModel::onEvent,
@@ -870,7 +936,11 @@ data class ReaderScreen(val bookId: Int) : Screen, Parcelable {
                     mainModel.onEvent(MainEvent.OnChangePdfDefaultReadingMode(it.name))
                 },
                 navigateBack = {
-                    navigator.pop()
+                    if (activeNavigationOnlyChapterId != null) {
+                        screenModel.onEvent(ReaderEvent.OnCloseNavigationOnlyChapter)
+                    } else {
+                        navigator.pop()
+                    }
                 },
                 navigateToBookInfo = { changePath ->
                     if (changePath) BookInfoScreen.changePathChannel.trySend(true)

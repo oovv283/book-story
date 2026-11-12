@@ -49,6 +49,7 @@ import com.byteflipper.everbook.domain.reader.Checkpoint
 import com.byteflipper.everbook.domain.reader.HighlightPalette
 import com.byteflipper.everbook.domain.reader.ReaderText
 import com.byteflipper.everbook.domain.reader.ReaderText.Chapter
+import com.byteflipper.everbook.domain.reader.partitionReaderTextFlow
 import com.byteflipper.everbook.domain.translation.AUTO_TRANSLATION_LANGUAGE
 import com.byteflipper.everbook.domain.translation.BookTranslation
 import com.byteflipper.everbook.domain.translation.BookTranslationStatus
@@ -226,11 +227,11 @@ class ReaderModel @Inject constructor(
                     bookmarksObserveJob?.cancel()
                     loadJob = launch(Dispatchers.IO) {
                         val accumulated = mutableListOf<ReaderText>()
-                        val chapterIndexes = mutableListOf<Int>()
                         val lastOpened = getLatestHistory.execute(_state.value.book.id)?.time
                         var firstChunkReceived = false
                         var renderedItemCount = 0
                         var lastUiUpdateTime = 0L
+                        var readingStartIndex: Int? = null
                         val initialScrollIndex = _state.value.book.scrollIndex.coerceAtLeast(0)
                         val initialScrollOffset = _state.value.book.scrollOffset
                         val initialProgress = _state.value.book.progress
@@ -257,10 +258,30 @@ class ReaderModel @Inject constructor(
                             // Progress survives parser re-chunking better than saved item indexes.
                             if (initialProgress > 0f) {
                                 if (isParsing) return null
-                                return (initialProgress * lastIndex)
+                                val lastDisplayIndex =
+                                    _state.value.listState.layoutInfo.totalItemsCount - 1
+                                if (lastDisplayIndex < 0) return null
+                                val targetDisplayIndex = (initialProgress * lastDisplayIndex)
                                     .roundToInt()
+                                    .coerceIn(0, lastDisplayIndex)
+                                val savedDisplayIndex = initialScrollIndex
+                                    .takeIf { it in 0..lastIndex }
+                                    ?.let(textIndexToDisplayIndex)
+                                if (savedDisplayIndex == targetDisplayIndex) {
+                                    return initialScrollIndex
+                                }
+                                return displayIndexToTextIndex(targetDisplayIndex)
                                     .coerceIn(0, lastIndex)
                             }
+
+                            readingStartIndex?.let { startIndex ->
+                                return startIndex.coerceIn(0, lastIndex)
+                            }
+
+                            // Wait for the first linear chapter heading while parsing. EPUB cover,
+                            // title pages and other front matter stay available, but are not the
+                            // default starting position for a new reading session.
+                            if (isParsing) return null
 
                             if (initialScrollIndex <= 0) return 0
                             if (initialScrollIndex <= lastIndex) return initialScrollIndex
@@ -272,25 +293,32 @@ class ReaderModel @Inject constructor(
                             snapshotFlow {
                                 val state = _state.value
                                 Triple(
-                                    state.text.size,
-                                    state.listState.layoutInfo.totalItemsCount,
-                                    state.isParsing
+                                    Triple(
+                                        state.text.size,
+                                        state.listState.layoutInfo.totalItemsCount,
+                                        state.isParsing
+                                    ),
+                                    state.readerDisplayMappingReady
                                 )
-                            }.first { (textSize, itemsCount, isParsing) ->
-                                if (textSize < 1 || itemsCount < 1) return@first false
+                            }.first { (metrics, mappingReady) ->
+                                val (textSize, itemsCount, isParsing) = metrics
+                                if (!mappingReady || textSize < 1 || itemsCount < 1) {
+                                    return@first false
+                                }
                                 val targetIndex = resolveInitialTargetIndex(
                                     textSize = textSize,
                                     isParsing = isParsing
                                 ) ?: return@first false
-                                itemsCount > targetIndex
+                                itemsCount > textIndexToDisplayIndex(targetIndex)
                             }
 
                             val targetIndex = resolveInitialTargetIndex(
                                 textSize = _state.value.text.size,
                                 isParsing = _state.value.isParsing
                             ) ?: 0
+                            val targetDisplayIndex = textIndexToDisplayIndex(targetIndex)
                             _state.value.listState.requestScrollToItem(
-                                targetIndex,
+                                targetDisplayIndex,
                                 if (targetIndex == initialScrollIndex) initialScrollOffset else 0
                             )
                             updateChapter(index = targetIndex)
@@ -310,8 +338,10 @@ class ReaderModel @Inject constructor(
                             }
 
                             val snapshot = accumulated.toList()
-                            val chapters = chapterIndexes.mapNotNull { index ->
-                                snapshot.getOrNull(index) as? Chapter
+                            val flow = partitionReaderTextFlow(snapshot)
+                            readingStartIndex = flow.defaultStartIndex
+                            if (initialProgress <= 0f) {
+                                flow.defaultStartIndex?.let { sessionTextIndexStart = it }
                             }
                             renderedItemCount = snapshot.size
                             lastUiUpdateTime = now
@@ -331,10 +361,15 @@ class ReaderModel @Inject constructor(
                                     book = it.book.copy(
                                         lastOpened = lastOpened
                                     ),
-                                    originalText = snapshot,
-                                    text = snapshot,
-                                    chapters = chapters,
-                                    chapterIndexes = chapterIndexes.toList(),
+                                    originalText = flow.sourceText,
+                                    text = flow.sourceText,
+                                    chapters = flow.chapters,
+                                    chapterIndexes = flow.chapterIndexes,
+                                    navigationChapters = flow.navigationChapters,
+                                    navigationOnlyText = flow.navigationOnlyText,
+                                    hiddenNavigationOnlyTextIndexes = flow.hiddenTextIndexes,
+                                    activeNavigationOnlyChapter = null,
+                                    readerDisplayMappingReady = false,
                                     isLoading = false,
                                     isParsing = true,
                                     errorMessage = null,
@@ -348,13 +383,7 @@ class ReaderModel @Inject constructor(
                         val text = try {
                             getText.execute(_state.value.book.id) { chunk ->
                                 if (chunk.isNotEmpty()) {
-                                    val startIndex = accumulated.size
                                     accumulated.addAll(chunk)
-                                    chunk.forEachIndexed { index, readerText ->
-                                        if (readerText is Chapter) {
-                                            chapterIndexes.add(startIndex + index)
-                                        }
-                                    }
                                     publishText(force = !firstChunkReceived)
                                 }
                             }
@@ -408,10 +437,12 @@ class ReaderModel @Inject constructor(
                         if (accumulated.size != text.size) {
                             accumulated.clear()
                             accumulated.addAll(text)
-                            chapterIndexes.clear()
-                            text.forEachIndexed { index, readerText ->
-                                if (readerText is Chapter) chapterIndexes.add(index)
-                            }
+                        }
+
+                        val flow = partitionReaderTextFlow(text)
+                        readingStartIndex = flow.defaultStartIndex
+                        if (initialProgress <= 0f) {
+                            flow.defaultStartIndex?.let { sessionTextIndexStart = it }
                         }
 
                         val finalFirstPublish = !firstChunkReceived
@@ -425,12 +456,15 @@ class ReaderModel @Inject constructor(
 
                         _state.update {
                             it.copy(
-                                originalText = text,
-                                text = text,
-                                chapters = chapterIndexes.mapNotNull { index ->
-                                    text.getOrNull(index) as? Chapter
-                                },
-                                chapterIndexes = chapterIndexes.toList(),
+                                originalText = flow.sourceText,
+                                text = flow.sourceText,
+                                chapters = flow.chapters,
+                                chapterIndexes = flow.chapterIndexes,
+                                navigationChapters = flow.navigationChapters,
+                                navigationOnlyText = flow.navigationOnlyText,
+                                hiddenNavigationOnlyTextIndexes = flow.hiddenTextIndexes,
+                                activeNavigationOnlyChapter = null,
+                                readerDisplayMappingReady = false,
                                 showMenu = if (finalFirstPublish) false else it.showMenu,
                                 book = it.book.copy(
                                     lastOpened = lastOpened
@@ -439,7 +473,7 @@ class ReaderModel @Inject constructor(
                                 isParsing = false,
                                 errorMessage = null,
                                 bookTranslation = it.bookTranslation.withBookTextReadiness(
-                                    isReady = text.isNotEmpty()
+                                    isReady = flow.sourceText.isNotEmpty()
                                 )
                             )
                         }
@@ -543,6 +577,7 @@ class ReaderModel @Inject constructor(
                 }
 
                 is ReaderEvent.OnChangeProgress -> {
+                    if (_state.value.activeNavigationOnlyChapter != null) return@launch
                     launch(Dispatchers.IO) {
                         _state.update {
                             it.copy(
@@ -565,43 +600,70 @@ class ReaderModel @Inject constructor(
 
                 is ReaderEvent.OnScrollToChapter -> {
                     launch {
-                        _state.value.apply {
-                            val chapterPosition = chapters.indexOfFirst {
-                                it.id == event.chapter.id
-                            }.takeIf { it != -1 }
-                            val chapterIndex = chapterPosition?.let {
-                                chapterIndexes.getOrNull(it)
-                            }
-                            if (chapterIndex == null) {
-                                return@launch
-                            }
-
-                            listState.requestScrollToItem(textIndexToDisplayIndex(chapterIndex))
-                            updateChapter(index = chapterIndex)
-                            onEvent(
-                                ReaderEvent.OnChangeProgress(
-                                    progress = calculateProgress(chapterIndex),
-                                    firstVisibleItemIndex = chapterIndex,
-                                    firstVisibleItemOffset = 0
+                        val state = _state.value
+                        if (state.navigationOnlyText.containsKey(event.chapter.id)) {
+                            _state.update {
+                                it.copy(
+                                    activeNavigationOnlyChapter = event.chapter,
+                                    currentChapter = event.chapter,
+                                    currentChapterProgress = 0f,
+                                    pendingBookmarkNavigation = null,
+                                    pendingBookmarkDisplayIndex = null
                                 )
-                            )
+                            }
+                            return@launch
                         }
+
+                        val chapterPosition = state.chapters.indexOfFirst {
+                            it.id == event.chapter.id
+                        }.takeIf { it != -1 } ?: return@launch
+                        val chapterIndex = state.chapterIndexes.getOrNull(chapterPosition)
+                            ?: return@launch
+
+                        state.listState.requestScrollToItem(textIndexToDisplayIndex(chapterIndex))
+                        _state.update { it.copy(activeNavigationOnlyChapter = null) }
+                        updateChapter(index = chapterIndex)
+                        onEvent(
+                            ReaderEvent.OnChangeProgress(
+                                progress = calculateProgress(chapterIndex),
+                                firstVisibleItemIndex = chapterIndex,
+                                firstVisibleItemOffset = 0
+                            )
+                        )
                     }
                 }
 
+                ReaderEvent.OnCloseNavigationOnlyChapter -> {
+                    val state = _state.value
+                    if (state.activeNavigationOnlyChapter == null) return@launch
+                    _state.update { it.copy(activeNavigationOnlyChapter = null) }
+                    val textIndex = displayIndexToTextIndex(
+                        state.listState.firstVisibleItemIndex
+                    ).coerceIn(0, state.text.lastIndex.coerceAtLeast(0))
+                    updateChapter(textIndex)
+                }
+
                 is ReaderEvent.OnScroll -> {
+                    if (_state.value.activeNavigationOnlyChapter != null) return@launch
                     scrollJob?.cancel()
                     scrollJob = launch {
                         delay(300.milliseconds)
                         yield()
 
-                        val scrollTo = (_state.value.text.lastIndex * event.progress).roundToInt()
-                        _state.value.listState.requestScrollToItem(textIndexToDisplayIndex(scrollTo))
+                        val state = _state.value
+                        val lastDisplayIndex = (state.listState.layoutInfo.totalItemsCount - 1)
+                            .coerceAtLeast(0)
+                        val targetDisplayIndex = (lastDisplayIndex * event.progress)
+                            .roundToInt()
+                            .coerceIn(0, lastDisplayIndex)
+                        val scrollTo = displayIndexToTextIndex(targetDisplayIndex)
+                        state.listState.requestScrollToItem(targetDisplayIndex)
                         updateChapter(scrollTo)
                     }
                 }
 
                 is ReaderEvent.OnRestoreCheckpoint -> {
+                    if (_state.value.activeNavigationOnlyChapter != null) return@launch
                     launch {
                         _state.value.apply {
                             listState.requestScrollToItem(
@@ -1252,6 +1314,7 @@ class ReaderModel @Inject constructor(
                     val target = bookmark.paragraphIndex.coerceIn(0, state.text.lastIndex)
                     _state.update {
                         it.copy(
+                            activeNavigationOnlyChapter = null,
                             pendingBookmarkNavigation = bookmark,
                             pendingBookmarkDisplayIndex = textIndexToDisplayIndex(target)
                         )
@@ -1657,11 +1720,16 @@ class ReaderModel @Inject constructor(
     fun updateProgress(
         listState: LazyListState,
         displayIndexToTextIndex: (Int) -> Int = { it },
-        textIndexToDisplayIndex: (Int) -> Int = { it }
+        textIndexToDisplayIndex: (Int) -> Int = { it },
+        enabled: Boolean = true
     ) {
+        progressJob?.cancel()
+        if (!enabled) return
         this.displayIndexToTextIndex = displayIndexToTextIndex
         this.textIndexToDisplayIndex = textIndexToDisplayIndex
-        progressJob?.cancel()
+        _state.update {
+            if (it.text.isNotEmpty()) it.copy(readerDisplayMappingReady = true) else it
+        }
         progressJob = viewModelScope.launch(Dispatchers.Main) {
             snapshotFlow {
                 listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset
@@ -1763,21 +1831,22 @@ class ReaderModel @Inject constructor(
                 return book.progress
             }
 
-            val index = firstVisibleItemIndex
-                ?: displayIndexToTextIndex(listState.firstVisibleItemIndex)
-
-            if (index == 0) {
+            val displayIndex = firstVisibleItemIndex
+                ?.let(textIndexToDisplayIndex)
+                ?: listState.firstVisibleItemIndex
+            val lastDisplayIndex = listState.layoutInfo.totalItemsCount - 1
+            if (displayIndex <= 0 || lastDisplayIndex <= 0) {
                 return 0f
             }
 
             val lastVisibleItemIndex = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index
                 ?: return book.progress
-            if (displayIndexToTextIndex(lastVisibleItemIndex) >= text.lastIndex) {
+            if (lastVisibleItemIndex >= lastDisplayIndex) {
                 return 1f
             }
 
-            return@run index
-                .div(text.lastIndex.toFloat())
+            return@run displayIndex
+                .div(lastDisplayIndex.toFloat())
                 .coerceAndPreventNaN()
         }
     }

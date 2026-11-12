@@ -46,6 +46,8 @@ sealed class ReaderEvent {
         val chapter: Chapter
     ) : ReaderEvent()
 
+    data object OnCloseNavigationOnlyChapter : ReaderEvent()
+
     data class OnScroll(
         val progress: Float
     ) : ReaderEvent()

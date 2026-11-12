@@ -37,6 +37,11 @@ import org.jsoup.Jsoup
 private const val EPUB_TAG = "EPUB Parser"
 private typealias Source = String
 
+private data class EpubSpineZipEntry(
+    val entry: ZipEntry,
+    val isLinear: Boolean
+)
+
 private val EPUB_PARSER_DISPATCHER = Dispatchers.IO.limitedParallelism(3)
 
 class EpubTextParser @Inject constructor(
@@ -110,7 +115,7 @@ class EpubTextParser @Inject constructor(
     }
 
     private suspend fun ZipFile.parseEpub(
-        chapterEntries: List<ZipEntry>,
+        chapterEntries: List<EpubSpineZipEntry>,
         imageEntries: List<ZipEntry>,
         chapterTitleEntries: Map<Source, ReaderText.Chapter>?,
         hasUsableToc: Boolean,
@@ -123,12 +128,13 @@ class EpubTextParser @Inject constructor(
 
         val parsedChapters = ConcurrentLinkedQueue<Pair<Int, List<ReaderText>>>()
         coroutineScope {
-            val jobs = chapterEntries.mapIndexed { index, entry ->
+            val jobs = chapterEntries.mapIndexed { index, spineEntry ->
                 async(EPUB_PARSER_DISPATCHER) {
                     yield()
                     parseZipEntry(
                         zip = this@parseEpub,
-                        entry = entry,
+                        entry = spineEntry.entry,
+                        isLinear = spineEntry.isLinear,
                         imageEntriesByName = imageEntriesByName,
                         chapterTitleMap = chapterTitleEntries,
                         hasUsableToc = hasUsableToc
@@ -155,6 +161,7 @@ class EpubTextParser @Inject constructor(
     private suspend fun ZipFile.parseZipEntry(
         zip: ZipFile,
         entry: ZipEntry,
+        isLinear: Boolean,
         imageEntriesByName: Map<String, ZipEntry>,
         chapterTitleMap: Map<Source, ReaderText.Chapter>?,
         hasUsableToc: Boolean
@@ -175,11 +182,14 @@ class EpubTextParser @Inject constructor(
             chapterTitleMap = chapterTitleMap
         )
         if (tocChapter == null && hasUsableToc) {
+            // A non-linear spine resource that has no EPUB navigation target is not part of the
+            // normal reading stream and has no in-app entry through which it could be opened.
+            if (!isLinear) return null
             if (!readerText.hasReadableReaderText(requireChapter = false)) return null
             return readerText
         }
 
-        val chapter = tocChapter ?: run {
+        val chapter = (tocChapter ?: run {
             val firstVisibleText = readerText.firstOrNull { line ->
                 line is ReaderText.Text && line.line.text.containsVisibleText()
             } as? ReaderText.Text ?: return null
@@ -188,7 +198,7 @@ class EpubTextParser @Inject constructor(
                 title = firstVisibleText.line.text,
                 nested = false
             )
-        }
+        }).copy(isLinear = isLinear)
 
         readerText = readerText.dropWhile { line ->
             line is ReaderText.Text && line.line.text.lowercase() == chapter.title.lowercase()
@@ -207,7 +217,7 @@ class EpubTextParser @Inject constructor(
     private suspend fun ZipFile.getChapterTitleMapFromNavigation(
         opfEntry: ZipEntry?,
         zipEntries: List<ZipEntry>,
-        chapterEntries: List<ZipEntry>
+        chapterEntries: List<EpubSpineZipEntry>
     ): Map<Source, ReaderText.Chapter>? {
         if (opfEntry == null) return null
 
@@ -232,7 +242,7 @@ class EpubTextParser @Inject constructor(
             } ?: return null
 
             val navContent = getInputStream(navEntry).bufferedReader().use { it.readText() }
-            val spinePaths = chapterEntries.map { it.name.replace('\\', '/') }.toSet()
+            val spinePaths = chapterEntries.map { it.entry.name.replace('\\', '/') }.toSet()
             val chapterTitles = linkedMapOf<Source, ReaderText.Chapter>()
             EpubNavigationParser.parse(navContent, navEntry.name).forEach { item ->
                 if (item.sourcePath in spinePaths && item.sourcePath !in chapterTitles) {
@@ -319,27 +329,21 @@ class EpubTextParser @Inject constructor(
     private fun ZipFile.getChapterEntries(
         opfEntry: ZipEntry?,
         zipEntries: List<ZipEntry>
-    ): List<ZipEntry> {
+    ): List<EpubSpineZipEntry> {
         opfEntry?.let { entry ->
             val opfContent = getInputStream(entry).bufferedReader().use { reader ->
                 reader.readText()
             }
-            val document = Jsoup.parse(opfContent)
-
-            val manifestItems = document.select("manifest > item").associate {
-                it.attr("id") to it.attr("href")
+            val entriesByPath = zipEntries.associateBy { zipEntry ->
+                zipEntry.name.replace('\\', '/')
             }
-
-            document.select("spine > itemref").mapNotNull { itemRef ->
-                val spineId = itemRef.attr("idref")
-                val chapterSource = manifestItems[spineId]
-                    ?.substringAfterLast(File.separator)
-                    ?.lowercase()
+            val spineEntries = EpubSpineParser.parse(opfContent, entry.name).mapNotNull { item ->
+                val zipEntry = entriesByPath[item.archivePath]
+                    ?: entriesByPath.entries.firstOrNull { (path, _) ->
+                        path.equals(item.archivePath, ignoreCase = true)
+                    }?.value
                     ?: return@mapNotNull null
-
-                zipEntries.find { zipEntry ->
-                    zipEntry.name.substringAfterLast(File.separator).lowercase() == chapterSource
-                }
+                EpubSpineZipEntry(zipEntry, item.isLinear)
             }.also { entries ->
                 if (entries.isNotEmpty()) {
                     Log.i(EPUB_TAG, "Successfully parsed OPF to get entries from spine.")
@@ -355,6 +359,6 @@ class EpubTextParser @Inject constructor(
             }
         }.sortedBy {
             it.name.filter { char -> char.isDigit() }.toBigIntegerOrNull()
-        }
+        }.map { EpubSpineZipEntry(it, isLinear = true) }
     }
 }

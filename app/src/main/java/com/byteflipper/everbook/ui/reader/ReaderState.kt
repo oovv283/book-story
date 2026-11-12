@@ -19,6 +19,7 @@ import com.byteflipper.everbook.domain.ui.UIText
 import com.byteflipper.everbook.domain.util.BottomSheet
 import com.byteflipper.everbook.domain.util.Drawer
 import com.byteflipper.everbook.presentation.core.constants.provideEmptyBook
+import java.util.UUID
 
 @Immutable
 data class ReaderState(
@@ -27,6 +28,11 @@ data class ReaderState(
     val text: List<ReaderText> = emptyList(),
     val chapters: List<Chapter> = emptyList(),
     val chapterIndexes: List<Int> = emptyList(),
+    val navigationChapters: List<Chapter> = emptyList(),
+    val navigationOnlyText: Map<UUID, List<ReaderText>> = emptyMap(),
+    val hiddenNavigationOnlyTextIndexes: Set<Int> = emptySet(),
+    val activeNavigationOnlyChapter: Chapter? = null,
+    val readerDisplayMappingReady: Boolean = false,
     val listState: LazyListState = LazyListState(),
 
     val currentChapter: Chapter? = null,

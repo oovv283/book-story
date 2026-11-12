@@ -20,5 +20,6 @@ internal data class ReaderTextCacheEntry(
     val type: String? = null,
     val text: String? = null,
     val nested: Boolean? = null,
+    val linear: Boolean? = null,
     val imageFile: String? = null
 )

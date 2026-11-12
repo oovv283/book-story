@@ -18,7 +18,8 @@ sealed class ReaderText {
     data class Chapter(
         val id: UUID = UUID.randomUUID(),
         val title: String,
-        val nested: Boolean
+        val nested: Boolean,
+        val isLinear: Boolean = true
     ) : ReaderText()
 
     @Immutable

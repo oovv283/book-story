@@ -61,6 +61,7 @@ fun ReaderContent(
     text: List<ReaderText>,
     displayContent: ReaderDisplayContent,
     chapters: List<Chapter>,
+    isNavigationOnlyContent: Boolean,
     bottomSheet: BottomSheet?,
     translation: com.byteflipper.everbook.ui.reader.ReaderTranslationState,
     bookTranslation: ReaderBookTranslationState,
@@ -291,6 +292,7 @@ fun ReaderContent(
             book = book,
             text = text,
             displayContent = displayContent,
+            isNavigationOnlyContent = isNavigationOnlyContent,
             highlightsByParagraph = highlightsByParagraph,
             focusedBookmarkId = focusedBookmarkId,
             onAnnotationTextLayout = { bookmarkId, topOffsetPx ->

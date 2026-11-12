@@ -60,36 +60,62 @@ sealed interface ReaderDisplayRow {
 
 fun buildReaderDisplayContent(
     text: List<ReaderText>,
-    inlineContentPlacements: List<ReaderInlineContentPlacement>
+    inlineContentPlacements: List<ReaderInlineContentPlacement>,
+    hiddenTextIndexes: Set<Int> = emptySet()
 ): ReaderDisplayContent {
     val placementsByTextIndex = inlineContentPlacements
         .asSequence()
         .filter { it.mode == ReaderInlineContentMode.TEXT }
-        .filter { it.progressUnit in text.indices }
+        .filter { it.progressUnit in text.indices && it.progressUnit !in hiddenTextIndexes }
         .sortedBy { it.id }
         .groupBy { it.progressUnit }
 
     val rows = buildList {
         text.forEachIndexed { index, entry ->
-            add(ReaderDisplayRow.Text(readerIndex = index, entry = entry))
-            placementsByTextIndex[index].orEmpty().forEach { placement ->
-                add(ReaderDisplayRow.InlineContent(placement = placement))
+            if (index !in hiddenTextIndexes) {
+                add(ReaderDisplayRow.Text(readerIndex = index, entry = entry))
+                placementsByTextIndex[index].orEmpty().forEach { placement ->
+                    add(ReaderDisplayRow.InlineContent(placement = placement))
+                }
             }
         }
     }
     val displayToTextIndex = IntArray(rows.size)
     val textToDisplayIndex = IntArray(text.size)
+    val visibleTextIndexes = IntArray(text.size) { -1 }
 
     rows.forEachIndexed { displayIndex, row ->
         val textIndex = when (row) {
             is ReaderDisplayRow.Text -> {
                 textToDisplayIndex[row.readerIndex] = displayIndex
+                visibleTextIndexes[row.readerIndex] = displayIndex
                 row.readerIndex
             }
 
             is ReaderDisplayRow.InlineContent -> row.placement.progressUnit
         }
         displayToTextIndex[displayIndex] = textIndex
+    }
+
+    if (text.isNotEmpty()) {
+        var nextVisibleDisplayIndex = -1
+        for (textIndex in text.indices.reversed()) {
+            val visibleDisplayIndex = visibleTextIndexes[textIndex]
+            if (visibleDisplayIndex >= 0) {
+                nextVisibleDisplayIndex = visibleDisplayIndex
+            } else {
+                textToDisplayIndex[textIndex] = nextVisibleDisplayIndex
+            }
+        }
+
+        var previousVisibleDisplayIndex = visibleTextIndexes.firstOrNull { it >= 0 } ?: 0
+        for (textIndex in text.indices) {
+            if (visibleTextIndexes[textIndex] >= 0) {
+                previousVisibleDisplayIndex = visibleTextIndexes[textIndex]
+            } else if (textToDisplayIndex[textIndex] < 0) {
+                textToDisplayIndex[textIndex] = previousVisibleDisplayIndex
+            }
+        }
     }
 
     return ReaderDisplayContent(

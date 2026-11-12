@@ -110,6 +110,7 @@ fun ReaderScaffold(
     book: Book,
     text: List<ReaderText>,
     displayContent: ReaderDisplayContent,
+    isNavigationOnlyContent: Boolean,
     highlightsByParagraph: Map<Int, List<Bookmark>>,
     focusedBookmarkId: Int?,
     onAnnotationTextLayout: (bookmarkId: Int, topOffsetPx: Float) -> Unit,
@@ -275,34 +276,36 @@ fun ReaderScaffold(
                         .background(MaterialTheme.colorScheme.readerBarsColor)
                         .noRippleClickable(onClick = {})
                 ) {
-                    if (bookTranslation.shouldShowReaderBookTranslationStatus) {
-                        ReaderBookTranslationStatusBar(
-                            state = bookTranslation,
-                            fillBackgroundProgress = true,
-                            showDismissButton = false,
-                            toggleTranslationDisplay = toggleBookTranslationDisplay,
-                            dismissStatusBar = {},
-                            openBookTranslationPanel = openBookTranslationPanel
+                    if (!isNavigationOnlyContent) {
+                        if (bookTranslation.shouldShowReaderBookTranslationStatus) {
+                            ReaderBookTranslationStatusBar(
+                                state = bookTranslation,
+                                fillBackgroundProgress = true,
+                                showDismissButton = false,
+                                toggleTranslationDisplay = toggleBookTranslationDisplay,
+                                dismissStatusBar = {},
+                                openBookTranslationPanel = openBookTranslationPanel
+                            )
+                        }
+
+                        ReaderBottomBar(
+                            onSetAutoScrolling = onSetAutoScrolling,
+                            menuVisibility = menuVisibility,
+                            fullscreenMode = fullscreenMode,
+                            book = book,
+                            progress = progress,
+                            text = text,
+                            listState = listState,
+                            displayContent = displayContent,
+                            lockMenu = lockMenu,
+                            isParsing = isParsing,
+                            checkpoint = checkpoint,
+                            bottomBarPadding = bottomBarPadding,
+                            restoreCheckpoint = restoreCheckpoint,
+                            scroll = scroll,
+                            changeProgress = changeProgress
                         )
                     }
-
-                    ReaderBottomBar(
-                        onSetAutoScrolling = onSetAutoScrolling,
-                        menuVisibility = menuVisibility,
-                        fullscreenMode = fullscreenMode,
-                        book = book,
-                        progress = progress,
-                        text = text,
-                        listState = listState,
-                        displayContent = displayContent,
-                        lockMenu = lockMenu,
-                        isParsing = isParsing,
-                        checkpoint = checkpoint,
-                        bottomBarPadding = bottomBarPadding,
-                        restoreCheckpoint = restoreCheckpoint,
-                        scroll = scroll,
-                        changeProgress = changeProgress
-                    )
                 }
             }
         }
@@ -329,7 +332,7 @@ fun ReaderScaffold(
                 highlightedReading = highlightedReading,
                 highlightedReadingThickness = highlightedReadingThickness,
                 progress = progress,
-                progressBar = progressBar,
+                progressBar = progressBar && !isNavigationOnlyContent,
                 progressBarPadding = progressBarPadding,
                 progressBarAlignment = progressBarAlignment,
                 progressBarFontSize = progressBarFontSize,
@@ -371,7 +374,8 @@ fun ReaderScaffold(
                 dismissTranslation = dismissTranslation,
                 toggleTranslationOriginal = toggleTranslationOriginal,
                 openDictionary = openDictionary,
-                annotationActionsEnabled = !bookTranslation.isTranslatedBookVisible,
+                annotationActionsEnabled = !bookTranslation.isTranslatedBookVisible &&
+                        !isNavigationOnlyContent,
                 createBookmark = createBookmark,
                 createHighlight = createHighlight,
                 showHighlightPalette = showHighlightPalette,
