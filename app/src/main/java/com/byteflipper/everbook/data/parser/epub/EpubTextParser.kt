@@ -33,6 +33,7 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.yield
 import org.jsoup.Jsoup
+import org.jsoup.parser.Parser
 
 private const val EPUB_TAG = "EPUB Parser"
 private typealias Source = String
@@ -223,7 +224,7 @@ class EpubTextParser @Inject constructor(
 
         return try {
             val opfContent = getInputStream(opfEntry).bufferedReader().use { it.readText() }
-            val navHref = Jsoup.parse(opfContent)
+            val navHref = Jsoup.parse(opfContent, "", Parser.xmlParser())
                 .select("manifest > item")
                 .firstOrNull { item ->
                     item.attr("properties").split(Regex("\\s+")).any { it == "nav" }

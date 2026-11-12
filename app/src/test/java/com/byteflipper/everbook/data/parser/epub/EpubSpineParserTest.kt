@@ -15,7 +15,7 @@ class EpubSpineParserTest {
     @Test
     fun preservesSpineOrderAndMarksLinearNoWithoutDroppingItsNavigationTarget() {
         val opf = """
-            <package>
+            <package xmlns="http://www.idpf.org/2007/opf">
               <manifest>
                 <item id="before" href="chapter_47.xhtml" />
                 <item id="paper-toc" href="chapter_48.xhtml" />

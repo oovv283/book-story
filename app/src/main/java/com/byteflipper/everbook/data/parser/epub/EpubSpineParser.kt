@@ -8,6 +8,7 @@
 package com.byteflipper.everbook.data.parser.epub
 
 import org.jsoup.Jsoup
+import org.jsoup.parser.Parser
 
 internal data class EpubSpineItem(
     val archivePath: String,
@@ -16,7 +17,9 @@ internal data class EpubSpineItem(
 
 internal object EpubSpineParser {
     fun parse(opfContent: String, opfArchivePath: String): List<EpubSpineItem> {
-        val document = Jsoup.parse(opfContent)
+        // OPF is XML: HTML parsing treats self-closing <item/> and <itemref/> as
+        // nested non-void elements, which can silently drop later manifest/spine entries.
+        val document = Jsoup.parse(opfContent, "", Parser.xmlParser())
         val manifest = document.select("manifest > item").associate { item ->
             item.attr("id") to item.attr("href")
         }
