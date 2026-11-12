@@ -30,7 +30,7 @@ class BookEditorModel @Inject constructor(
     private val bookRepository: BookRepository
 ) : ViewModel() {
     private val _state = MutableStateFlow(BookEditorState())
-    val state = _state.asStateFlow()
+    internal val state = _state.asStateFlow()
 
     private var savedText: List<ReaderText> = emptyList()
     private var lastEditAt = 0L

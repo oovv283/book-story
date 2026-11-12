@@ -456,8 +456,8 @@ private fun BookEditorContent(
                     }
                 },
                 onSelectionChange = { match, selected ->
-                    selectedMatchKeys = if (selected) selectedMatchKeys + match.key
-                    else selectedMatchKeys - match.key
+                    selectedMatchKeys = (if (selected) selectedMatchKeys + match.key
+                    else selectedMatchKeys - match.key).toMutableSet()
                 },
                 onJump = { match ->
                     jumpSequence += 1

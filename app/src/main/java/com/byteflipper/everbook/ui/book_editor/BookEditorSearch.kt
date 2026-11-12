@@ -237,7 +237,7 @@ internal object BookEditorSearch {
         return Character.isLetterOrDigit(codePoint) ||
             Character.getType(codePoint) == Character.NON_SPACING_MARK.toInt() ||
             Character.getType(codePoint) == Character.COMBINING_SPACING_MARK.toInt() ||
-            codePoint == '_'
+            codePoint == '_'.code
     }
 
     private const val CONTEXT_LENGTH = 24
