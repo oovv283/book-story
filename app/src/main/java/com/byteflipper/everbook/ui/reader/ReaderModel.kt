@@ -292,7 +292,7 @@ class ReaderModel @Inject constructor(
                         val restoreInitialScrollJob = launch(Dispatchers.Main) {
                             snapshotFlow {
                                 val state = _state.value
-                                Triple(
+                                Pair(
                                     Triple(
                                         state.text.size,
                                         state.listState.layoutInfo.totalItemsCount,
@@ -1727,10 +1727,10 @@ class ReaderModel @Inject constructor(
         if (!enabled) return
         this.displayIndexToTextIndex = displayIndexToTextIndex
         this.textIndexToDisplayIndex = textIndexToDisplayIndex
-        _state.update {
-            if (it.text.isNotEmpty()) it.copy(readerDisplayMappingReady = true) else it
-        }
         progressJob = viewModelScope.launch(Dispatchers.Main) {
+            _state.update {
+                if (it.text.isNotEmpty()) it.copy(readerDisplayMappingReady = true) else it
+            }
             snapshotFlow {
                 listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset
             }.distinctUntilChanged().debounce(300.milliseconds).collectLatest { (displayIndex, offset) ->
