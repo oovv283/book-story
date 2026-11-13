@@ -45,9 +45,22 @@ jobs:
 
       - name: Run unit tests and build the ARM64 APK
         run: |
+          set -o pipefail
           ci_version_code=$((17 + GITHUB_RUN_NUMBER))
           echo "CI versionCode=$ci_version_code"
-          bash gradlew --no-daemon --stacktrace :app:testEverbookDebugUnitTest :app:assembleEverbookDebug -Parm64Only=true -PciVersionCode="$ci_version_code"
+          bash gradlew --no-daemon --stacktrace :app:testEverbookDebugUnitTest :app:assembleEverbookDebug -Parm64Only=true -PciVersionCode="$ci_version_code" 2>&1 | tee gradle-build.log
+
+      - name: Upload Gradle failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: book-story-gradle-failure-${{ github.run_number }}
+          path: |
+            gradle-build.log
+            app/build/reports/tests/testEverbookDebugUnitTest/
+            app/build/test-results/testEverbookDebugUnitTest/
+          if-no-files-found: warn
+          retention-days: 1
 
       - name: Verify package, version, ABI output, and stable signing certificate
         shell: bash
