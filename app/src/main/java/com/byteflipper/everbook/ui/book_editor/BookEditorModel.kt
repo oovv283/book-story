@@ -76,6 +76,7 @@ class BookEditorModel @Inject constructor(
         val current = _state.value
         if (current.isSaving || current.isExporting) return
         val item = current.text.getOrNull(index) ?: return
+        if (item is ReaderText.Text && item.isDeleted) return
         if (item.editorSource() == value) return
 
         val now = SystemClock.elapsedRealtime()
@@ -99,6 +100,14 @@ class BookEditorModel @Inject constructor(
             redoStack = emptyList(),
             errorMessage = null
         )
+    }
+
+    fun deleteEmptyParagraph(index: Int) {
+        val current = _state.value
+        if (current.isSaving || current.isExporting) return
+        _state.value = current.withEmptyParagraphDeletedAt(index, savedText) ?: return
+        lastEditAt = 0L
+        lastChangedIndex = null
     }
 
     /** Applies a multi-field edit (such as Replace Selected) as one undoable action. */

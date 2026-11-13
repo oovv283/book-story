@@ -231,9 +231,10 @@ class BookExportRepositoryImpl @Inject constructor(
     }
 
     private fun readerTextMatches(expected: List<ReaderText>, actual: List<ReaderText>): Boolean {
-        if (expected.size != actual.size) return false
-        return expected.indices.all { index ->
-            when (val left = expected[index]) {
+        val visibleExpected = expected.filterNot { it is ReaderText.Text && it.isDeleted }
+        if (visibleExpected.size != actual.size) return false
+        return visibleExpected.indices.all { index ->
+            when (val left = visibleExpected[index]) {
                 is ReaderText.Chapter -> (actual[index] as? ReaderText.Chapter)?.let { right ->
                     left.title == right.title && left.nested == right.nested && left.isLinear == right.isLinear
                 } == true

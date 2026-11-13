@@ -564,6 +564,11 @@ private fun BookEditorContent(
             }
 
             else -> {
+                val visibleEditorEntries = remember(state.text) {
+                    state.text.mapIndexedNotNull { index, entry ->
+                        if (entry is ReaderText.Text && entry.isDeleted) null else index to entry
+                    }
+                }
                 LazyColumn(
                     modifier = Modifier
                         .fillMaxSize()
@@ -586,9 +591,10 @@ private fun BookEditorContent(
                         }
                     }
                     itemsIndexed(
-                        items = state.text,
-                        key = { index, _ -> "reader-entry-$index" }
-                    ) { index, entry ->
+                        items = visibleEditorEntries,
+                        key = { _, indexedEntry -> "reader-entry-${indexedEntry.first}" }
+                    ) { _, indexedEntry ->
+                        val (index, entry) = indexedEntry
                         when (entry) {
                             is ReaderText.Chapter -> EditorSourceField(
                                 bookId = bookId,
@@ -611,7 +617,19 @@ private fun BookEditorContent(
                                 maxLines = Int.MAX_VALUE,
                                 jump = searchJump,
                                 enabled = !state.isSaving && !state.isExporting,
-                                onTextChange = { model.changeText(index, it) }
+                                onTextChange = { model.changeText(index, it) },
+                                trailingIcon = if (entry.source.isBlank() && !entry.isDeleted &&
+                                    !state.isSaving && !state.isExporting
+                                ) {
+                                    {
+                                        IconButton(onClick = { model.deleteEmptyParagraph(index) }) {
+                                            Icon(
+                                                painter = painterResource(R.drawable.ic_close_rounded_24px),
+                                                contentDescription = stringResource(R.string.book_editor_delete_empty_paragraph)
+                                            )
+                                        }
+                                    }
+                                } else null
                             )
 
                             is ReaderText.Math -> EditorSourceField(
@@ -858,7 +876,8 @@ private fun EditorSourceField(
     maxLines: Int,
     jump: SearchJump?,
     enabled: Boolean,
-    onTextChange: (String) -> Unit
+    onTextChange: (String) -> Unit,
+    trailingIcon: (@Composable () -> Unit)? = null
 ) {
     val focusRequester = remember(bookId, entryIndex) { FocusRequester() }
     var fieldValue by remember(bookId, entryIndex) { mutableStateOf(TextFieldValue(text)) }
@@ -885,6 +904,7 @@ private fun EditorSourceField(
             .fillMaxWidth()
             .focusRequester(focusRequester),
         label = { Text(label) },
+        trailingIcon = trailingIcon,
         minLines = minLines,
         maxLines = maxLines,
         shape = MaterialTheme.shapes.medium,

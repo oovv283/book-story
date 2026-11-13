@@ -24,6 +24,23 @@ class TxtEditedCopySerializerTest {
     }
 
     @Test
+    fun deletingAnEmptyParagraphRemovesOnlyItsOriginalLineAndPreservesSource() {
+        val source = "Title\r\nFirst paragraph\r\nSecond paragraph\r\n"
+            .toByteArray(StandardCharsets.UTF_8)
+        val originalBytes = source.copyOf()
+        val entries = listOf(
+            ReaderText.Chapter(title = "Title", nested = false),
+            ReaderText.Text(AnnotatedString(""), source = "", isDeleted = true),
+            text("Second paragraph")
+        )
+
+        val exported = TxtEditedCopySerializer.serialize(source, entries)
+
+        assertEquals("Title\r\nSecond paragraph\r\n", exported.toString(StandardCharsets.UTF_8))
+        assertArrayEquals(originalBytes, source)
+    }
+
+    @Test
     fun editsPatchOnlyMappedLinesAndPreserveMixedLineEndingsAndBlankLines() {
         val sourceText = "***\r\nTitle\n\nFirst paragraph  \rSecond paragraph\r\n"
         val source = sourceText.toByteArray(StandardCharsets.UTF_8)

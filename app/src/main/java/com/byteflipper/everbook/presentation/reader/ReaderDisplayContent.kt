@@ -63,16 +63,22 @@ fun buildReaderDisplayContent(
     inlineContentPlacements: List<ReaderInlineContentPlacement>,
     hiddenTextIndexes: Set<Int> = emptySet()
 ): ReaderDisplayContent {
+    val effectiveHiddenTextIndexes = buildSet {
+        addAll(hiddenTextIndexes)
+        text.forEachIndexed { index, entry ->
+            if (entry is ReaderText.Text && entry.isDeleted) add(index)
+        }
+    }
     val placementsByTextIndex = inlineContentPlacements
         .asSequence()
         .filter { it.mode == ReaderInlineContentMode.TEXT }
-        .filter { it.progressUnit in text.indices && it.progressUnit !in hiddenTextIndexes }
+        .filter { it.progressUnit in text.indices && it.progressUnit !in effectiveHiddenTextIndexes }
         .sortedBy { it.id }
         .groupBy { it.progressUnit }
 
     val rows = buildList {
         text.forEachIndexed { index, entry ->
-            if (index !in hiddenTextIndexes) {
+            if (index !in effectiveHiddenTextIndexes) {
                 add(ReaderDisplayRow.Text(readerIndex = index, entry = entry))
                 placementsByTextIndex[index].orEmpty().forEach { placement ->
                     add(ReaderDisplayRow.InlineContent(placement = placement))

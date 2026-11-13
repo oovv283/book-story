@@ -30,14 +30,15 @@ import org.jsoup.select.NodeTraversor
 import org.jsoup.select.NodeVisitor
 
 /**
- * Creates a new EPUB while preserving every archive entry except XHTML text nodes that can be
- * mapped one-to-one to plain editable paragraphs. Ambiguous, formatted, or structural edits fail
- * closed instead of risking the source package or its assets.
+ * Creates a new EPUB while preserving every archive entry except XHTML paragraphs that can be
+ * mapped one-to-one to plain editable text. Ambiguous, formatted, or structural edits fail closed
+ * instead of risking the source package or its assets.
  */
 internal object EpubEditedCopySerializer {
     private data class TextChange(
         val original: String,
-        val replacement: String
+        val replacement: String,
+        val removeParagraph: Boolean = false
     )
 
     private data class TextLocation(
@@ -146,7 +147,21 @@ internal object EpubEditedCopySerializer {
                 val parsed = checkNotNull(documentsByName[location.entryName])
                 val node = parsed.textNodes.getOrNull(location.nodeIndex)
                     ?: throw IllegalArgumentException("The EPUB text mapping changed during export.")
-                node.text(change.replacement)
+                if (change.removeParagraph) {
+                    val paragraph = node.parent() as? org.jsoup.nodes.Element
+                        ?: throw IllegalArgumentException("The EPUB paragraph could not be removed safely.")
+                    require(
+                        paragraph.tagName().equals("p", ignoreCase = true) &&
+                            !paragraph.hasAttr("id") &&
+                            !paragraph.hasAttr("xml:id") &&
+                            !paragraph.hasAttr("name")
+                    ) {
+                        "Only a plain, unlinked EPUB paragraph can be removed safely; its edit remains saved in the app."
+                    }
+                    paragraph.remove()
+                } else {
+                    node.text(change.replacement)
+                }
             }
 
             documentsByName.forEach { (entryName, parsed) ->
@@ -179,7 +194,19 @@ internal object EpubEditedCopySerializer {
             val edited = editedText[index]
             when {
                 original is ReaderText.Text && edited is ReaderText.Text -> {
-                    if (original.source != edited.source) {
+                    if (edited.isDeleted) {
+                        require(edited.source.isBlank()) {
+                            "Only an empty EPUB paragraph can be deleted."
+                        }
+                        require(original.source.isNotBlank()) {
+                            "This EPUB paragraph has no unique source text to map for safe deletion."
+                        }
+                        changes += TextChange(
+                            original = original.source,
+                            replacement = "",
+                            removeParagraph = true
+                        )
+                    } else if (original.source != edited.source) {
                         require(edited.source.isNotBlank()) {
                             "An EPUB paragraph cannot be emptied safely; keep at least one character or clear it only in the app."
                         }

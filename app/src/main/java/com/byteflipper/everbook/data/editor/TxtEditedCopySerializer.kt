@@ -48,6 +48,7 @@ internal object TxtEditedCopySerializer {
         }
 
         val outputLines = lines.toMutableList()
+        val deletedSourceLines = mutableSetOf<Int>()
         var changed = false
         entryRefs.forEachIndexed { entryIndex, sourceRef ->
             val editedEntry = editedText[entryIndex]
@@ -72,14 +73,26 @@ internal object TxtEditedCopySerializer {
                     require(editedEntry is ReaderText.Text) {
                         "The book structure changed; export was cancelled."
                     }
-                    requireSingleSourceLine(editedEntry.source)
                     val oldLine = outputLines[sourceRef.sourceLine]
-                    if (oldLine.text != editedEntry.source) {
-                        outputLines[sourceRef.sourceLine] = oldLine.copy(text = editedEntry.source)
+                    if (editedEntry.isDeleted) {
+                        require(editedEntry.source.isBlank() && oldLine.text.isNotBlank()) {
+                            "Only a mapped empty TXT paragraph can be deleted safely."
+                        }
+                        deletedSourceLines += sourceRef.sourceLine
                         changed = true
+                    } else {
+                        requireSingleSourceLine(editedEntry.source)
+                        if (oldLine.text != editedEntry.source) {
+                            outputLines[sourceRef.sourceLine] = oldLine.copy(text = editedEntry.source)
+                            changed = true
+                        }
                     }
                 }
             }
+        }
+
+        deletedSourceLines.sortedDescending().forEach { lineIndex ->
+            outputLines.removeAt(lineIndex)
         }
 
         // This exact-copy path also guarantees no-op round trips preserve every original byte.

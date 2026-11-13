@@ -984,6 +984,7 @@
     <string name="book_editor_replace_with">Replace with</string>
     <string name="book_editor_clear_search">Clear search field</string>
     <string name="book_editor_clear_replacement">Clear replacement field</string>
+    <string name="book_editor_delete_empty_paragraph">Delete empty paragraph</string>
     <string name="book_editor_case_sensitive">Case sensitive</string>
     <string name="book_editor_whole_word">Whole word</string>
     <string name="book_editor_regex">Regular expression</string>

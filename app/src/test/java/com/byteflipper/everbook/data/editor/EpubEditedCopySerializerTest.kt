@@ -72,6 +72,38 @@ class EpubEditedCopySerializerTest {
     }
 
     @Test
+    fun removesDeletedEmptyParagraphFromEditedCopyAndKeepsOriginalAndAssets() {
+        val source = File(temporaryFolder.root, "source-delete.epub")
+        val output = File(temporaryFolder.root, "edited-delete.epub")
+        val imageBytes = byteArrayOf(9, 8, 7, 6)
+        createEpub(source, imageBytes, paragraphId = null)
+        val originalBytes = source.readBytes()
+
+        EpubEditedCopySerializer.write(
+            sourceFile = source,
+            destinationFile = output,
+            originalText = listOf(
+                ReaderText.Chapter(title = "Chapter 1", nested = false),
+                text("Original passage.")
+            ),
+            editedText = listOf(
+                ReaderText.Chapter(title = "Chapter 1", nested = false),
+                text("", isDeleted = true)
+            )
+        )
+
+        assertArrayEquals("The source EPUB must remain byte-for-byte unchanged.", originalBytes, source.readBytes())
+        ZipFile(output).use { edited ->
+            assertArrayEquals(imageBytes, edited.getInputStream(edited.getEntry("OEBPS/images/pixel.png")).readBytes())
+            val xhtml = edited.getInputStream(edited.getEntry("OEBPS/text/chapter.xhtml"))
+                .bufferedReader().use { it.readText() }
+            val parsed = Jsoup.parse(xhtml, "", Parser.xmlParser())
+            assertTrue(parsed.select("body p").isEmpty())
+            assertNotNull(parsed.selectFirst("body"))
+        }
+    }
+
+    @Test
     fun noOpExportIsAnExactByteCopy() {
         val source = File(temporaryFolder.root, "source-no-op.epub")
         val output = File(temporaryFolder.root, "copy-no-op.epub")
@@ -131,9 +163,15 @@ class EpubEditedCopySerializerTest {
         assertTrue(!output.exists())
     }
 
-    private fun createEpub(file: File, imageBytes: ByteArray, duplicateParagraph: Boolean = false) {
+    private fun createEpub(
+        file: File,
+        imageBytes: ByteArray,
+        duplicateParagraph: Boolean = false,
+        paragraphId: String? = "p1"
+    ) {
         val duplicate = if (duplicateParagraph) "<p id=\"p2\">Original passage.</p>" else ""
-        val xhtml = """<?xml version="1.0" encoding="utf-8"?><html xmlns="http://www.w3.org/1999/xhtml"><head><title>Chapter 1</title></head><body><p id="p1">Original passage.</p>$duplicate</body></html>"""
+        val primaryParagraphId = paragraphId?.let { " id=\"$it\"" }.orEmpty()
+        val xhtml = """<?xml version="1.0" encoding="utf-8"?><html xmlns="http://www.w3.org/1999/xhtml"><head><title>Chapter 1</title></head><body><p$primaryParagraphId>Original passage.</p>$duplicate</body></html>"""
         ZipOutputStream(file.outputStream()).use { zip ->
             val mimetype = "application/epub+zip".toByteArray(Charsets.US_ASCII)
             val crc = CRC32().apply { update(mimetype) }
@@ -161,8 +199,9 @@ class EpubEditedCopySerializerTest {
         zip.closeEntry()
     }
 
-    private fun text(value: String) = ReaderText.Text(
+    private fun text(value: String, isDeleted: Boolean = false) = ReaderText.Text(
         line = AnnotatedString(value),
-        source = value
+        source = value,
+        isDeleted = isDeleted
     )
 }

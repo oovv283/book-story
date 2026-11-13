@@ -9,6 +9,7 @@ package com.byteflipper.everbook.data.editor
 
 import android.app.Application
 import androidx.annotation.Keep
+import androidx.compose.ui.text.AnnotatedString
 import com.google.gson.Gson
 import com.byteflipper.everbook.data.parser.MarkdownParser
 import com.byteflipper.everbook.domain.file.CachedFile
@@ -22,9 +23,56 @@ import javax.inject.Singleton
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
+private const val KIND_CHAPTER = "chapter"
+private const val KIND_TEXT = "text"
+private const val KIND_DELETED_TEXT = "deleted_text"
+private const val KIND_MATH = "math"
+
+internal fun applyBookTextEditEntries(
+    sourceText: List<ReaderText>,
+    edits: Map<Int, BookTextEditEntry>?,
+    parseMarkdown: (String) -> AnnotatedString,
+    startIndex: Int = 0
+): List<ReaderText> {
+    if (edits.isNullOrEmpty()) return sourceText
+
+    return sourceText.mapIndexed { localIndex, entry ->
+        val edit = edits[startIndex + localIndex] ?: return@mapIndexed entry
+        when {
+            entry is ReaderText.Chapter && edit.kind == KIND_CHAPTER ->
+                entry.copy(title = edit.value)
+
+            entry is ReaderText.Text && edit.kind == KIND_DELETED_TEXT ->
+                entry.copy(line = parseMarkdown(""), source = "", isDeleted = true)
+
+            entry is ReaderText.Text && edit.kind == KIND_TEXT ->
+                entry.copy(line = parseMarkdown(edit.value), source = edit.value, isDeleted = false)
+
+            entry is ReaderText.Math && edit.kind == KIND_MATH ->
+                entry.copy(latex = edit.value)
+
+            else -> entry
+        }
+    }
+}
+
+internal fun readerTextToBookTextEditEntries(text: List<ReaderText>): List<BookTextEditEntry> =
+    text.mapIndexedNotNull { index, entry ->
+        when (entry) {
+            is ReaderText.Chapter -> BookTextEditEntry(index, KIND_CHAPTER, entry.title)
+            is ReaderText.Text -> if (entry.isDeleted) {
+                BookTextEditEntry(index, KIND_DELETED_TEXT, "")
+            } else {
+                BookTextEditEntry(index, KIND_TEXT, entry.source)
+            }
+            is ReaderText.Math -> BookTextEditEntry(index, KIND_MATH, entry.latex)
+            is ReaderText.Image, ReaderText.Separator -> null
+        }
+    }
+
 /**
  * Stores one persistent working copy of edited text separately from the imported/source file.
- * EPUB packages, HTML/XML structure, images, and the user's original file remain untouched.
+ * This store never writes to the source; format-specific exporters create and verify separate copies.
  */
 @Singleton
 class BookTextEditStore @Inject constructor(
@@ -48,28 +96,12 @@ class BookTextEditStore @Inject constructor(
         sourceText: List<ReaderText>,
         edits: Map<Int, BookTextEditEntry>?,
         startIndex: Int = 0
-    ): List<ReaderText> {
-        if (edits.isNullOrEmpty()) return sourceText
-
-        return sourceText.mapIndexed { localIndex, entry ->
-            val edit = edits[startIndex + localIndex] ?: return@mapIndexed entry
-            when {
-                entry is ReaderText.Chapter && edit.kind == KIND_CHAPTER ->
-                    entry.copy(title = edit.value)
-
-                entry is ReaderText.Text && edit.kind == KIND_TEXT ->
-                    entry.copy(
-                        line = markdownParser.parse(edit.value),
-                        source = edit.value
-                    )
-
-                entry is ReaderText.Math && edit.kind == KIND_MATH ->
-                    entry.copy(latex = edit.value)
-
-                else -> entry
-            }
-        }
-    }
+    ): List<ReaderText> = applyBookTextEditEntries(
+        sourceText = sourceText,
+        edits = edits,
+        parseMarkdown = markdownParser::parse,
+        startIndex = startIndex
+    )
 
     suspend fun save(
         bookId: Int,
@@ -271,14 +303,7 @@ class BookTextEditStore @Inject constructor(
     }
 
     private fun toEntries(text: List<ReaderText>): List<BookTextEditEntry> =
-        text.mapIndexedNotNull { index, entry ->
-            when (entry) {
-                is ReaderText.Chapter -> BookTextEditEntry(index, KIND_CHAPTER, entry.title)
-                is ReaderText.Text -> BookTextEditEntry(index, KIND_TEXT, entry.source)
-                is ReaderText.Math -> BookTextEditEntry(index, KIND_MATH, entry.latex)
-                is ReaderText.Image, ReaderText.Separator -> null
-            }
-        }
+        readerTextToBookTextEditEntries(text)
 
     private fun CachedFile.identity() = BookTextEditSourceIdentity(
         path = path,
@@ -304,9 +329,6 @@ class BookTextEditStore @Inject constructor(
         private const val EDITS_DIRECTORY = "book_text_edits"
         private const val HISTORY_DIRECTORY = "book_text_edit_history"
         private const val SCHEMA_VERSION = 1
-        private const val KIND_CHAPTER = "chapter"
-        private const val KIND_TEXT = "text"
-        private const val KIND_MATH = "math"
     }
 }
 

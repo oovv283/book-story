@@ -35,4 +35,22 @@ class ReaderDisplayContentTest {
         assertEquals(1, display.textIndexToDisplayIndex(3))
         assertEquals(2, display.textIndexToDisplayIndex(4))
     }
+
+    @Test
+    fun hidesDeletedParagraphWhileKeepingOriginalReaderIndexes() {
+        val chapter = ReaderText.Chapter(title = "Chapter", nested = false)
+        val before = ReaderText.Text(AnnotatedString("Before"))
+        val deleted = ReaderText.Text(AnnotatedString(""), source = "", isDeleted = true)
+        val after = ReaderText.Text(AnnotatedString("After"))
+
+        val display = buildReaderDisplayContent(
+            text = listOf(chapter, before, deleted, after),
+            inlineContentPlacements = emptyList()
+        )
+
+        assertEquals(listOf(chapter, before, after), display.rows.map { (it as ReaderDisplayRow.Text).entry })
+        assertEquals(3, display.displayIndexToTextIndex(2))
+        assertEquals(2, display.textIndexToDisplayIndex(2))
+        assertEquals(2, display.textIndexToDisplayIndex(3))
+    }
 }

@@ -25,7 +25,8 @@ sealed class ReaderText {
     @Immutable
     data class Text(
         val line: AnnotatedString,
-        val source: String = line.text
+        val source: String = line.text,
+        val isDeleted: Boolean = false
     ) : ReaderText()
 
     @Immutable

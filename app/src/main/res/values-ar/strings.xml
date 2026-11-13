@@ -967,6 +967,7 @@
     <string name="book_editor_replace_with">استبدل بـ</string>
     <string name="book_editor_clear_search">مسح حقل البحث</string>
     <string name="book_editor_clear_replacement">مسح حقل الاستبدال</string>
+    <string name="book_editor_delete_empty_paragraph">حذف الفقرة الفارغة</string>
     <string name="book_editor_case_sensitive">مطابقة حالة الأحرف</string>
     <string name="book_editor_whole_word">الكلمة كاملة</string>
     <string name="book_editor_regex">تعبير نمطي</string>
