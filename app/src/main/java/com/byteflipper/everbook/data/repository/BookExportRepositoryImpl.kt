@@ -20,6 +20,7 @@ import com.byteflipper.everbook.domain.library.book.Book
 import com.byteflipper.everbook.domain.reader.ReaderText
 import com.byteflipper.everbook.domain.repository.BookExportRepository
 import java.io.File
+import java.io.FileOutputStream
 import java.io.InputStream
 import java.security.MessageDigest
 import java.util.UUID
