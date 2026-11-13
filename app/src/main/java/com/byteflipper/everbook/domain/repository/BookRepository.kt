@@ -9,6 +9,7 @@ package com.byteflipper.everbook.domain.repository
 
 import com.byteflipper.everbook.domain.library.book.Book
 import com.byteflipper.everbook.domain.library.book.BookWithCover
+import com.byteflipper.everbook.data.editor.BookTextEditRevisionSummary
 import com.byteflipper.everbook.domain.reader.ReaderText
 import com.byteflipper.everbook.domain.util.CoverImage
 
@@ -29,10 +30,21 @@ interface BookRepository {
 
     suspend fun saveBookTextEdits(
         bookId: Int,
-        editedText: List<ReaderText>
+        editedText: List<ReaderText>,
+        previousText: List<ReaderText>? = null
     )
 
     suspend fun clearBookTextEdits(bookId: Int)
+
+    suspend fun getBookTextEditHistory(bookId: Int): List<BookTextEditRevisionSummary>
+
+    suspend fun preserveCurrentBookTextEditsBeforeRestore(bookId: Int)
+
+    suspend fun getBookTextEditRevision(bookId: Int, revisionId: String): List<ReaderText>?
+
+    suspend fun getBookEditedCopyUri(bookId: Int): String?
+
+    suspend fun setBookEditedCopyUri(bookId: Int, uri: String)
 
     suspend fun insertBook(
         bookWithCover: BookWithCover

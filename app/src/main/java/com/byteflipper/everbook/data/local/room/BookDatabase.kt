@@ -40,7 +40,7 @@ import java.io.File
         ReadingSessionEntity::class,
         BookmarkEntity::class,
     ],
-    version = 15,
+    version = 16,
     autoMigrations = [
         AutoMigration(1, 2),
         AutoMigration(2, 3),
@@ -398,6 +398,13 @@ object DatabaseHelper {
         }
     }
 
+    /** Adds optional publisher metadata without changing or dropping existing books. */
+    val MIGRATION_15_16 = object : Migration(15, 16) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE `BookEntity` ADD COLUMN `publisher` TEXT")
+        }
+    }
+
     /**
      * Callback, который вызывается при создании базы данных (fresh install).
      * Заполняет таблицу `CategoryEntity` четырьмя стандартными категориями, если она пуста.
@@ -443,6 +450,7 @@ object DatabaseHelper {
             .addMigrations(MIGRATION_12_13)
             .addMigrations(MIGRATION_13_14)
             .addMigrations(MIGRATION_14_15)
+            .addMigrations(MIGRATION_15_16)
             .build()
     }
 }

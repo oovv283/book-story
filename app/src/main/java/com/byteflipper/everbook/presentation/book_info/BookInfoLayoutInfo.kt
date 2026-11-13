@@ -51,6 +51,8 @@ fun BookInfoLayoutInfo(
                 showAuthorDialog = showAuthorDialog
             )
 
+            BookInfoLayoutInfoPublisher(book.publisher)
+
             BookInfoLayoutInfoProgress(
                 book = book
             )

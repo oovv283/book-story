@@ -108,6 +108,7 @@
     <string name="delete_cover">حذف صورة الغلاف</string>
     <string name="delete_cover_desc">حذف صورة الغلاف الحالية للكتاب</string>
     <string name="author">المؤلف</string>
+    <string name="book_publisher_format">الناشر: %1$s</string>
 
     <!-- Tabs -->
     <string name="all_tab">الكل</string>
@@ -921,13 +922,18 @@
     <string name="book_editor_save">حفظ التعديلات</string>
     <string name="book_editor_saved">تم حفظ التعديلات</string>
     <string name="book_editor_save_error">تعذّر الحفظ: %1$s</string>
-    <string name="book_editor_export_copy">تصدير نسخة مصححة</string>
+    <string name="book_editor_export_copy">إنشاء النسخة المعدلة</string>
+    <string name="book_editor_update_copy">تحديث النسخة المحفوظة</string>
     <string name="book_editor_export_name_suffix"> - نسخة مصححة</string>
     <string name="book_editor_exported">تم حفظ النسخة المصححة والتحقق منها؛ الملف الأصلي ما تغيّر.</string>
     <string name="book_editor_export_failed">تعذّر إنشاء نسخة موثوقة؛ الملف الأصلي ما تغيّر.</string>
     <string name="book_editor_export_cancelled_after_save">تعديلاتك محفوظة داخل التطبيق؛ ما صدرنا ملف مستقل.</string>
     <string name="book_editor_export_unsupported">التصدير الآمن لهالصيغة ما تأكد إلى الآن. تعديلات التطبيق تبقى منفصلة عن الأصل.</string>
     <string name="book_editor_saved_export_unsupported">تعديلاتك محفوظة داخل التطبيق، لكن ما نقدر نطلع نسخة منفصلة آمنة لهالصيغة إلى الآن.</string>
+    <string name="book_editor_copy_updated">تحدّثت التعديلات في النسخة نفسها.</string>
+    <string name="book_editor_change_copy_location">تغيير موقع النسخة المحفوظة</string>
+    <string name="book_editor_copy_update_failed">تعديلاتك محفوظة داخل التطبيق، لكن تعذر تحديث الملف المرتبط. اختر موقعًا جديدًا لإعادة ربط النسخة.</string>
+    <string name="book_editor_export_permission_failed">تعذر حفظ صلاحية الوصول الدائمة إلى هذا الملف؛ اختر مكانًا آخر حتى يمكن تحديث النسخة لاحقًا.</string>
     <string name="book_editor_exporting">جارٍ التصدير…</string>
     <string name="book_editor_unsaved">غير محفوظ</string>
     <string name="book_editor_undo_count">تراجع (%1$d)</string>
@@ -937,6 +943,16 @@
     <string name="book_editor_restore_confirmation">سيُحذف كل ما حُفظ من تعديلات الكتاب، وتُلغى التغييرات غير المحفوظة، ويُعاد نصه الأصلي. تبي تكمّل؟</string>
     <string name="book_editor_restore_action">استعادة</string>
     <string name="book_editor_restored">تمت استعادة النص الأصلي</string>
+    <string name="book_editor_history">سجل التعديلات</string>
+    <string name="book_editor_history_desc">يحتفظ التطبيق بالأصل وآخر نسخة محفوظة من كل يوم على جهازك لمدة سنة.</string>
+    <string name="book_editor_history_empty">ما فيه نسخ محفوظة للحين. احفظ تعديلًا عشان يبدأ السجل.</string>
+    <string name="book_editor_history_original">النص الأصلي قبل أول تعديل</string>
+    <string name="book_editor_history_before_restore">نسخة قبل الاستعادة · %1$s</string>
+    <string name="book_editor_history_entries">%1$d قسم قابل للتحرير</string>
+    <string name="book_editor_history_restore_title">تستعيد هالنسخة؟</string>
+    <string name="book_editor_history_restore_confirmation">بنحتفظ بالنسخة الحالية في السجل ونرجع النسخة المختارة. أي تعديل غير محفوظ بيُستبدل.</string>
+    <string name="book_editor_history_restore_action">استعادة النسخة</string>
+    <string name="book_editor_history_restored">تمت استعادة النسخة المحفوظة.</string>
     <string name="book_editor_unsaved_title">تعديلات غير محفوظة</string>
     <string name="book_editor_unsaved_message">احفظ تعديلاتك أو تخلّص منها قبل الخروج.</string>
     <string name="book_editor_save_and_leave">احفظ واخرج</string>
@@ -949,6 +965,8 @@
     <string name="book_editor_separator_preserved">فاصل القسم الأصلي</string>
     <string name="book_editor_search_for">ابحث عن</string>
     <string name="book_editor_replace_with">استبدل بـ</string>
+    <string name="book_editor_clear_search">مسح حقل البحث</string>
+    <string name="book_editor_clear_replacement">مسح حقل الاستبدال</string>
     <string name="book_editor_case_sensitive">مطابقة حالة الأحرف</string>
     <string name="book_editor_whole_word">الكلمة كاملة</string>
     <string name="book_editor_regex">تعبير نمطي</string>

@@ -17,6 +17,7 @@ import androidx.core.net.toUri
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import com.byteflipper.everbook.data.editor.BookTextEditStore
+import com.byteflipper.everbook.data.editor.BookTextEditRevisionSummary
 import com.byteflipper.everbook.data.cache.ReaderTextCache
 import com.byteflipper.everbook.data.di.ApplicationScope
 import com.byteflipper.everbook.data.local.room.BookDao
@@ -180,21 +181,80 @@ class BookRepositoryImpl @Inject constructor(
         return bookTextEditStore.apply(readerText, edits)
     }
 
-    override suspend fun saveBookTextEdits(bookId: Int, editedText: List<ReaderText>) =
+    override suspend fun saveBookTextEdits(
+        bookId: Int,
+        editedText: List<ReaderText>,
+        previousText: List<ReaderText>?
+    ) =
         withContext(Dispatchers.IO) {
             require(bookId != -1) { "A book must be selected before editing." }
-            val book = database.findBookById(bookId)
-            val cachedFile = getCachedFile(book.filePath)
-                ?: throw IllegalStateException("The source book is no longer available.")
-            if (!cachedFile.canAccess()) {
-                throw IllegalStateException("The source book is no longer accessible.")
+            val source = getBookTextEditSource(bookId)
+            bookTextEditStore.ensureOriginalRevision(bookId, source) {
+                getOriginalBookText(bookId)
             }
-            bookTextEditStore.save(bookId, cachedFile, editedText)
+            bookTextEditStore.save(bookId, source, editedText, previousText)
         }
 
-    override suspend fun clearBookTextEdits(bookId: Int) {
-        bookTextEditStore.delete(bookId)
+    override suspend fun clearBookTextEdits(bookId: Int) = withContext(Dispatchers.IO) {
+        val source = getBookTextEditSource(bookId)
+        bookTextEditStore.ensureOriginalRevision(bookId, source) {
+            getOriginalBookText(bookId)
+        }
+        bookTextEditStore.clearCurrent(bookId, source)
     }
+
+    override suspend fun getBookTextEditHistory(bookId: Int): List<BookTextEditRevisionSummary> =
+        withContext(Dispatchers.IO) {
+            bookTextEditStore.history(bookId, getBookTextEditSource(bookId))
+        }
+
+    override suspend fun preserveCurrentBookTextEditsBeforeRestore(bookId: Int) =
+        withContext(Dispatchers.IO) {
+            bookTextEditStore.preserveCurrentBeforeRestore(
+                bookId,
+                getBookTextEditSource(bookId)
+            )
+        }
+
+    override suspend fun getBookTextEditRevision(
+        bookId: Int,
+        revisionId: String
+    ): List<ReaderText>? = withContext(Dispatchers.IO) {
+        val source = getBookTextEditSource(bookId)
+        val entries = bookTextEditStore.loadRevision(bookId, source, revisionId)
+            ?: return@withContext null
+        val originalText = getOriginalBookText(bookId)
+        if (!originalText.hasReadableReaderText()) return@withContext null
+        bookTextEditStore.apply(originalText, entries.associateBy { it.index })
+    }
+
+    private suspend fun getOriginalBookText(bookId: Int): List<ReaderText> {
+        if (bookId == -1) return emptyList()
+        val book = database.findBookById(bookId)
+        val cachedFile = getCachedFile(book.filePath)
+            ?.takeIf { it.canAccess() }
+            ?: return emptyList()
+
+        readerTextCache.read(bookId, cachedFile)
+            ?.takeIf { it.hasReadableReaderText() }
+            ?.let { return it }
+
+        val originalText = textParser.parse(cachedFile)
+        if (!originalText.hasReadableReaderText()) return emptyList()
+        applicationScope.launch {
+            readerTextCache.write(bookId, cachedFile, originalText)
+        }
+        return originalText
+    }
+
+    override suspend fun getBookEditedCopyUri(bookId: Int): String? = withContext(Dispatchers.IO) {
+        bookTextEditStore.getEditedCopyUri(bookId, getBookTextEditSource(bookId))
+    }
+
+    override suspend fun setBookEditedCopyUri(bookId: Int, uri: String) =
+        withContext(Dispatchers.IO) {
+            bookTextEditStore.setEditedCopyUri(bookId, getBookTextEditSource(bookId), uri)
+        }
 
     /**
      * Inserts book in database.
@@ -579,6 +639,16 @@ class BookRepositoryImpl @Inject constructor(
             path = path,
             builder = builder
         )
+    }
+
+    private suspend fun getBookTextEditSource(bookId: Int): CachedFile {
+        val book = database.findBookById(bookId)
+        val source = getCachedFile(book.filePath)
+            ?: throw IllegalStateException("The source book is no longer available.")
+        if (!source.canAccess()) {
+            throw IllegalStateException("The source book is no longer accessible.")
+        }
+        return source
     }
 
 }

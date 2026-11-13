@@ -53,11 +53,15 @@ class BookEditorModel @Inject constructor(
                 if (text.isEmpty()) {
                     throw IllegalStateException("No editable text could be read from this book.")
                 }
+                val editHistory = bookRepository.getBookTextEditHistory(bookId)
+                val savedCopyUri = bookRepository.getBookEditedCopyUri(bookId)
                 savedText = text
                 _state.value = BookEditorState(
                     book = book,
                     text = text,
-                    isLoading = false
+                    isLoading = false,
+                    editHistory = editHistory,
+                    savedCopyUri = savedCopyUri
                 )
             } catch (error: Exception) {
                 _state.value = BookEditorState(
@@ -153,12 +157,14 @@ class BookEditorModel @Inject constructor(
 
         return try {
             withContext(Dispatchers.IO) {
-                bookRepository.saveBookTextEdits(book.id, snapshot)
+                bookRepository.saveBookTextEdits(book.id, snapshot, savedText)
             }
             savedText = snapshot
+            val history = bookRepository.getBookTextEditHistory(book.id)
             _state.value = _state.value.copy(
                 isSaving = false,
                 isDirty = _state.value.text != savedText,
+                editHistory = history,
                 errorMessage = null
             )
             true
@@ -182,8 +188,14 @@ class BookEditorModel @Inject constructor(
         return try {
             withContext(Dispatchers.IO) {
                 exportEditedBook(book, snapshot, destination)
+                bookRepository.setBookEditedCopyUri(book.id, destination.toString())
             }
-            _state.value = _state.value.copy(isExporting = false, errorMessage = null)
+            _state.value = _state.value.copy(
+                isExporting = false,
+                savedCopyUri = destination.toString(),
+                savedCopyUpdateFailed = false,
+                errorMessage = null
+            )
             true
         } catch (_: Exception) {
             _state.value = _state.value.copy(
@@ -193,18 +205,30 @@ class BookEditorModel @Inject constructor(
         }
     }
 
+    suspend fun updateSavedCopy(): Boolean {
+        val uri = _state.value.savedCopyUri ?: return false
+        return exportCorrectedCopy(Uri.parse(uri))
+    }
+
     suspend fun restoreOriginal(): Boolean {
-        val book = _state.value.book ?: return false
+        val current = _state.value
+        val book = current.book ?: return false
         if (_state.value.isSaving || _state.value.isExporting) return false
         _state.value = _state.value.copy(isSaving = true, errorMessage = null)
         return try {
             bookRepository.clearBookTextEdits(book.id)
             val original = withContext(Dispatchers.IO) { getText.execute(book.id) }
+            val history = bookRepository.getBookTextEditHistory(book.id)
+            val savedCopyUri = bookRepository.getBookEditedCopyUri(book.id)
+            val copyUpdateFailed = updateSavedCopySnapshot(book, original, savedCopyUri)
             savedText = original
             _state.value = BookEditorState(
                 book = book,
                 text = original,
-                isLoading = false
+                isLoading = false,
+                editHistory = history,
+                savedCopyUri = savedCopyUri,
+                savedCopyUpdateFailed = copyUpdateFailed
             )
             lastEditAt = 0L
             lastChangedIndex = null
@@ -215,6 +239,64 @@ class BookEditorModel @Inject constructor(
                 errorMessage = error.message ?: "Could not restore the source text."
             )
             false
+        }
+    }
+
+    suspend fun restoreRevision(revisionId: String): Boolean {
+        val current = _state.value
+        val book = current.book ?: return false
+        if (current.isSaving || current.isExporting || current.isLoading) return false
+        _state.value = current.copy(isSaving = true, errorMessage = null)
+
+        return try {
+            val restored = withContext(Dispatchers.IO) {
+                bookRepository.getBookTextEditRevision(book.id, revisionId)
+                    ?: throw IllegalStateException("This saved version is no longer available.")
+            }
+            withContext(Dispatchers.IO) {
+                bookRepository.preserveCurrentBookTextEditsBeforeRestore(book.id)
+                bookRepository.saveBookTextEdits(book.id, restored, current.text)
+            }
+            val history = bookRepository.getBookTextEditHistory(book.id)
+            val copyUpdateFailed = updateSavedCopySnapshot(book, restored, current.savedCopyUri)
+            savedText = restored
+            _state.value = current.copy(
+                text = restored,
+                isSaving = false,
+                isDirty = false,
+                undoStack = emptyList(),
+                redoStack = emptyList(),
+                editHistory = history,
+                savedCopyUpdateFailed = copyUpdateFailed,
+                errorMessage = null
+            )
+            lastEditAt = 0L
+            lastChangedIndex = null
+            true
+        } catch (error: Exception) {
+            _state.value = _state.value.copy(
+                isSaving = false,
+                errorMessage = error.message ?: "Could not restore this saved version."
+            )
+            false
+        }
+    }
+
+    private suspend fun updateSavedCopySnapshot(
+        book: com.byteflipper.everbook.domain.library.book.Book,
+        text: List<ReaderText>,
+        uri: String?
+    ): Boolean {
+        val extension = book.filePath.substringBefore('?').substringAfterLast('.', "")
+            .lowercase()
+        if (uri == null || extension !in setOf("txt", "epub")) return false
+        return try {
+            withContext(Dispatchers.IO) {
+                exportEditedBook(book, text, Uri.parse(uri))
+            }
+            false
+        } catch (_: Exception) {
+            true
         }
     }
 

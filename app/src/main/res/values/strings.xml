@@ -220,6 +220,7 @@
     <string name="delete_cover">Delete cover image</string>
     <string name="delete_cover_desc">Delete current cover image of the book</string>
     <string name="author">Author</string>
+    <string name="book_publisher_format">Publisher: %1$s</string>
     <string name="scan_browse_settings">Scan</string>
 
     <!-- Tabs -->
@@ -938,13 +939,18 @@
     <string name="book_editor_save">Save changes</string>
     <string name="book_editor_saved">Changes saved</string>
     <string name="book_editor_save_error">Could not save: %1$s</string>
-    <string name="book_editor_export_copy">Export corrected copy</string>
+    <string name="book_editor_export_copy">Create saved copy</string>
+    <string name="book_editor_update_copy">Update saved copy</string>
     <string name="book_editor_export_name_suffix"> - corrected</string>
     <string name="book_editor_exported">Corrected copy saved and verified; the original is unchanged.</string>
     <string name="book_editor_export_failed">Could not create a verified copy. The original remains unchanged.</string>
     <string name="book_editor_export_cancelled_after_save">Edits remain saved in the app; no separate file was exported.</string>
     <string name="book_editor_export_unsupported">Safe export is not yet verified for this format. In-app edits remain separate from the original.</string>
     <string name="book_editor_saved_export_unsupported">Edits are saved in the app, but a safe separate copy is not yet supported for this format.</string>
+    <string name="book_editor_copy_updated">Saved edits were written to the same copy.</string>
+    <string name="book_editor_change_copy_location">Change saved copy location</string>
+    <string name="book_editor_copy_update_failed">Edits are saved in the app, but the linked file could not be updated. Choose a new location to reconnect the copy.</string>
+    <string name="book_editor_export_permission_failed">Could not retain access to this document. Choose another location so the saved copy can be updated later.</string>
     <string name="book_editor_exporting">Exporting…</string>
     <string name="book_editor_unsaved">Unsaved</string>
     <string name="book_editor_undo_count">Undo (%1$d)</string>
@@ -954,6 +960,16 @@
     <string name="book_editor_restore_confirmation">This removes all saved text edits, discards any unsaved changes, and reloads the original text. Continue?</string>
     <string name="book_editor_restore_action">Restore</string>
     <string name="book_editor_restored">Original text restored</string>
+    <string name="book_editor_history">Edit history</string>
+    <string name="book_editor_history_desc">The original and the latest saved version for each day stay on this device for one year.</string>
+    <string name="book_editor_history_empty">No saved versions yet. Save an edit to start the history.</string>
+    <string name="book_editor_history_original">Original before the first edit</string>
+    <string name="book_editor_history_before_restore">Saved before restore · %1$s</string>
+    <string name="book_editor_history_entries">%1$d editable sections</string>
+    <string name="book_editor_history_restore_title">Restore this version?</string>
+    <string name="book_editor_history_restore_confirmation">Your current saved version will be kept in the history. Any unsaved changes will be replaced.</string>
+    <string name="book_editor_history_restore_action">Restore version</string>
+    <string name="book_editor_history_restored">Saved version restored.</string>
     <string name="book_editor_unsaved_title">Unsaved changes</string>
     <string name="book_editor_unsaved_message">Save or discard your changes before leaving.</string>
     <string name="book_editor_save_and_leave">Save and leave</string>
@@ -966,6 +982,8 @@
     <string name="book_editor_separator_preserved">Original section break</string>
     <string name="book_editor_search_for">Find</string>
     <string name="book_editor_replace_with">Replace with</string>
+    <string name="book_editor_clear_search">Clear search field</string>
+    <string name="book_editor_clear_replacement">Clear replacement field</string>
     <string name="book_editor_case_sensitive">Case sensitive</string>
     <string name="book_editor_whole_word">Whole word</string>
     <string name="book_editor_regex">Regular expression</string>

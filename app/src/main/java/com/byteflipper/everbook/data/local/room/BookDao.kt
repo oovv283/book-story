@@ -41,6 +41,7 @@ interface BookDao {
            OR INSTR(LOWER(title), LOWER(:query)) > 0
            OR INSTR(LOWER(COALESCE(author, '')), LOWER(:query)) > 0
            OR INSTR(LOWER(COALESCE(description, '')), LOWER(:query)) > 0
+           OR INSTR(LOWER(COALESCE(publisher, '')), LOWER(:query)) > 0
            OR INSTR(LOWER(filePath), LOWER(:query)) > 0
     """
     )

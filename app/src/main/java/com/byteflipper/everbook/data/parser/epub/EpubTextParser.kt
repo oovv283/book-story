@@ -36,6 +36,7 @@ import org.jsoup.Jsoup
 import org.jsoup.parser.Parser
 
 private const val EPUB_TAG = "EPUB Parser"
+private const val DESCRIPTION_FRONT_MATTER_LIMIT = 12
 private typealias Source = String
 
 private data class EpubSpineZipEntry(
@@ -70,6 +71,7 @@ class EpubTextParser @Inject constructor(
                     val opfEntry = zipEntries.find { entry ->
                         entry.name.endsWith(".opf", ignoreCase = true)
                     }
+                    val packageDescription = zip.getPackageDescription(opfEntry)
 
                     val chapterEntries = zip.getChapterEntries(opfEntry, zipEntries)
                     val imageEntries = zipEntries.filter { entry ->
@@ -94,6 +96,7 @@ class EpubTextParser @Inject constructor(
                         chapterEntries = chapterEntries,
                         imageEntries = imageEntries,
                         chapterTitleEntries = chapterTitleEntries,
+                        packageDescription = packageDescription,
                         hasUsableToc = hasUsableToc,
                         onChunk = onChunk
                     )
@@ -119,6 +122,7 @@ class EpubTextParser @Inject constructor(
         chapterEntries: List<EpubSpineZipEntry>,
         imageEntries: List<ZipEntry>,
         chapterTitleEntries: Map<Source, ReaderText.Chapter>?,
+        packageDescription: String?,
         hasUsableToc: Boolean,
         onChunk: ReaderTextChunkSink?
     ): List<ReaderText> {
@@ -138,6 +142,8 @@ class EpubTextParser @Inject constructor(
                         isLinear = spineEntry.isLinear,
                         imageEntriesByName = imageEntriesByName,
                         chapterTitleMap = chapterTitleEntries,
+                        packageDescription = packageDescription,
+                        spineIndex = index,
                         hasUsableToc = hasUsableToc
                     )?.let { parsedChapters.add(index to it) }
                     yield()
@@ -165,6 +171,8 @@ class EpubTextParser @Inject constructor(
         isLinear: Boolean,
         imageEntriesByName: Map<String, ZipEntry>,
         chapterTitleMap: Map<Source, ReaderText.Chapter>?,
+        packageDescription: String?,
+        spineIndex: Int,
         hasUsableToc: Boolean
     ): List<ReaderText>? {
         val content = withContext(Dispatchers.IO) {
@@ -182,6 +190,25 @@ class EpubTextParser @Inject constructor(
             chapterSource = entry.name,
             chapterTitleMap = chapterTitleMap
         )
+        val firstVisibleText = readerText.firstOrNull { line ->
+            line is ReaderText.Text && line.line.text.containsVisibleText()
+        } as? ReaderText.Text
+        val possibleSectionTitles = listOfNotNull(
+            tocChapter?.title,
+            firstVisibleText?.line?.text
+        )
+
+        if (packageDescription != null && EpubDescriptionFilter.isDescriptionSection(
+                readerText = readerText,
+                packageDescription = packageDescription,
+                sectionTitles = possibleSectionTitles,
+                isEarlySpineItem = spineIndex < DESCRIPTION_FRONT_MATTER_LIMIT
+            )
+        ) {
+            Log.i(EPUB_TAG, "Excluded the publisher description from the reading flow: ${entry.name}")
+            return null
+        }
+
         if (tocChapter == null && hasUsableToc) {
             // A non-linear spine resource that has no EPUB navigation target is not part of the
             // normal reading stream and has no in-app entry through which it could be opened.
@@ -191,12 +218,10 @@ class EpubTextParser @Inject constructor(
         }
 
         val chapter = (tocChapter ?: run {
-            val firstVisibleText = readerText.firstOrNull { line ->
-                line is ReaderText.Text && line.line.text.containsVisibleText()
-            } as? ReaderText.Text ?: return null
+            val firstText = firstVisibleText ?: return null
 
             ReaderText.Chapter(
-                title = firstVisibleText.line.text,
+                title = firstText.line.text,
                 nested = false
             )
         }).copy(isLinear = isLinear)
@@ -213,6 +238,18 @@ class EpubTextParser @Inject constructor(
         }
 
         return readerText
+    }
+
+    private fun ZipFile.getPackageDescription(opfEntry: ZipEntry?): String? {
+        if (opfEntry == null) return null
+        return runCatching {
+            val opfContent = getInputStream(opfEntry).bufferedReader().use { it.readText() }
+            Jsoup.parse(opfContent, "", Parser.xmlParser())
+                .select("metadata > dc|description")
+                .text()
+                .trim()
+                .takeIf { it.isNotBlank() }
+        }.getOrNull()
     }
 
     private suspend fun ZipFile.getChapterTitleMapFromNavigation(

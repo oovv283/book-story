@@ -12,6 +12,7 @@ import android.graphics.BitmapFactory
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.jsoup.Jsoup
+import org.jsoup.parser.Parser
 import com.byteflipper.everbook.R
 import com.byteflipper.everbook.data.parser.FileParser
 import com.byteflipper.everbook.domain.file.CachedFile
@@ -42,7 +43,7 @@ class EpubFileParser @Inject constructor() : FileParser {
                         .getInputStream(opfEntry)
                         .bufferedReader()
                         .use { it.readText() }
-                    val document = Jsoup.parse(opfContent)
+                    val document = Jsoup.parse(opfContent, "", Parser.xmlParser())
 
                     val title = document.select("metadata > dc|title").text().trim().run {
                         ifBlank {
@@ -57,6 +58,9 @@ class EpubFileParser @Inject constructor() : FileParser {
                             UIText.StringValue(this)
                         }
                     }
+
+                    val publisher = document.select("metadata > dc|publisher").text().trim()
+                        .takeIf { it.isNotBlank() }
 
                     val description = Jsoup.parse(
                         document.select("metadata > dc|description").text()
@@ -82,12 +86,13 @@ class EpubFileParser @Inject constructor() : FileParser {
                                 .firstOrNull()?.attr("href")
                         }
 
-                    book = BookWithCover(
-                        book = Book(
-                            title = title,
-                            author = author,
-                            description = description,
-                            scrollIndex = 0,
+                        book = BookWithCover(
+                            book = Book(
+                                title = title,
+                                author = author,
+                                description = description,
+                                publisher = publisher,
+                                scrollIndex = 0,
                             scrollOffset = 0,
                             progress = 0f,
                             filePath = cachedFile.path,

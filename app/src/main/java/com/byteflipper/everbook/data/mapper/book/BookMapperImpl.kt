@@ -33,6 +33,7 @@ class BookMapperImpl @Inject constructor() : BookMapper {
             progress = book.progress,
             author = book.author.getAsString(),
             description = book.description,
+            publisher = book.publisher,
             image = book.coverImage?.toString(),
             categoryId = resolvedCategoryId,
             pdfReadingMode = book.pdfReadingMode.name,
@@ -50,6 +51,7 @@ class BookMapperImpl @Inject constructor() : BookMapper {
                 R.string.unknown_author
             ),
             description = bookEntity.description,
+            publisher = bookEntity.publisher,
             scrollIndex = bookEntity.scrollIndex,
             scrollOffset = bookEntity.scrollOffset,
             progress = bookEntity.progress,

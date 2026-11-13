@@ -46,5 +46,6 @@ data class Book(
      * Поле появилось при переходе на модель many-to-many. Для обратной совместимости
      * отдельное поле [categoryId] всё ещё хранит «основную» категорию.
      */
-    val categoryIds: List<Int> = emptyList()
+    val categoryIds: List<Int> = emptyList(),
+    val publisher: String? = null
 ) : Parcelable

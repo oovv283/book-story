@@ -31,7 +31,7 @@ import javax.inject.Singleton
 
 private const val READER_TEXT_CACHE = "ReaderTextCache"
 private const val CACHE_SCHEMA_VERSION = 1
-private const val PARSER_VERSION = 3
+private const val PARSER_VERSION = 4
 private const val CACHE_ENTRY_CHUNK_SIZE = 512
 
 private const val TYPE_CHAPTER = "chapter"

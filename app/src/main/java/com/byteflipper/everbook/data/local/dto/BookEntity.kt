@@ -25,5 +25,6 @@ data class BookEntity(
     val pdfReadingMode: String = "PARSED_TEXT",
     val pdfTextModeAvailable: Boolean = true,
     val pdfPageIndex: Int = 0,
-    val pdfPageOffset: Int = 0
+    val pdfPageOffset: Int = 0,
+    val publisher: String? = null
 )

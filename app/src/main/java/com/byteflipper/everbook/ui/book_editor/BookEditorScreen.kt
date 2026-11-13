@@ -7,6 +7,9 @@
 
 package com.byteflipper.everbook.ui.book_editor
 
+import android.content.Context
+import android.content.Intent
+import android.net.Uri
 import android.os.Parcelable
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -24,6 +27,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
@@ -73,6 +77,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.byteflipper.everbook.R
+import com.byteflipper.everbook.data.editor.BookTextEditRevisionSummary
 import com.byteflipper.everbook.domain.navigator.Screen
 import com.byteflipper.everbook.domain.reader.ReaderText
 import com.byteflipper.everbook.presentation.core.util.showToast
@@ -80,6 +85,25 @@ import com.byteflipper.everbook.presentation.navigator.LocalNavigator
 import com.byteflipper.everbook.ui.reader.ReaderScreen
 import kotlinx.coroutines.launch
 import kotlinx.parcelize.Parcelize
+import java.text.DateFormat
+import java.util.Date
+
+private fun retainPersistableDocumentAccess(context: Context, destination: Uri): Boolean {
+    if (destination.scheme != "content") return true
+    return runCatching {
+        val resolver = context.contentResolver
+        val existing = resolver.persistedUriPermissions.firstOrNull { it.uri == destination }
+        if (existing == null || !existing.isReadPermission || !existing.isWritePermission) {
+            resolver.takePersistableUriPermission(
+                destination,
+                Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+            )
+        }
+        resolver.persistedUriPermissions.any {
+            it.uri == destination && it.isReadPermission && it.isWritePermission
+        }
+    }.getOrDefault(false)
+}
 
 @Parcelize
 data class BookEditorScreen(
@@ -124,12 +148,20 @@ private fun BookEditorContent(
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
     var exportAfterSave by remember { mutableStateOf(false) }
+    var navigateAfterExport by remember { mutableStateOf(false) }
     val exportLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("text/plain")
     ) { destination ->
         if (destination != null) {
             exportAfterSave = false
             scope.launch {
+                if (!retainPersistableDocumentAccess(context, destination)) {
+                    snackbarHostState.showSnackbar(
+                        context.getString(R.string.book_editor_export_permission_failed)
+                    )
+                    navigateAfterExport = false
+                    return@launch
+                }
                 val exported = model.exportCorrectedCopy(destination)
                 snackbarHostState.showSnackbar(
                     context.getString(
@@ -137,6 +169,13 @@ private fun BookEditorContent(
                         else R.string.book_editor_export_failed
                     )
                 )
+                if (navigateAfterExport && exported) {
+                    navigateAfterExport = false
+                    if (returnToReader) ReaderScreen.reloadEditedBookChannel.trySend(bookId)
+                    onNavigateBack()
+                } else if (!exported) {
+                    navigateAfterExport = false
+                }
             }
         } else if (exportAfterSave) {
             exportAfterSave = false
@@ -144,6 +183,53 @@ private fun BookEditorContent(
                 snackbarHostState.showSnackbar(
                     context.getString(R.string.book_editor_export_cancelled_after_save)
                 )
+                if (navigateAfterExport) {
+                    navigateAfterExport = false
+                    if (returnToReader) ReaderScreen.reloadEditedBookChannel.trySend(bookId)
+                    onNavigateBack()
+                }
+            }
+        }
+    }
+    val epubExportLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/epub+zip")
+    ) { destination ->
+        if (destination != null) {
+            exportAfterSave = false
+            scope.launch {
+                if (!retainPersistableDocumentAccess(context, destination)) {
+                    snackbarHostState.showSnackbar(
+                        context.getString(R.string.book_editor_export_permission_failed)
+                    )
+                    navigateAfterExport = false
+                    return@launch
+                }
+                val exported = model.exportCorrectedCopy(destination)
+                snackbarHostState.showSnackbar(
+                    context.getString(
+                        if (exported) R.string.book_editor_exported
+                        else R.string.book_editor_export_failed
+                    )
+                )
+                if (navigateAfterExport && exported) {
+                    navigateAfterExport = false
+                    if (returnToReader) ReaderScreen.reloadEditedBookChannel.trySend(bookId)
+                    onNavigateBack()
+                } else if (!exported) {
+                    navigateAfterExport = false
+                }
+            }
+        } else if (exportAfterSave) {
+            exportAfterSave = false
+            scope.launch {
+                snackbarHostState.showSnackbar(
+                    context.getString(R.string.book_editor_export_cancelled_after_save)
+                )
+                if (navigateAfterExport) {
+                    navigateAfterExport = false
+                    if (returnToReader) ReaderScreen.reloadEditedBookChannel.trySend(bookId)
+                    onNavigateBack()
+                }
             }
         }
     }
@@ -152,6 +238,8 @@ private fun BookEditorContent(
     var showMoreMenu by remember { mutableStateOf(false) }
     var showDiscardDialog by remember { mutableStateOf(false) }
     var showRestoreDialog by remember { mutableStateOf(false) }
+    var showEditHistory by remember { mutableStateOf(false) }
+    var revisionToRestore by remember { mutableStateOf<BookTextEditRevisionSummary?>(null) }
     var searchQuery by rememberSaveable(bookId) { mutableStateOf("") }
     var replacement by rememberSaveable(bookId) { mutableStateOf("") }
     var caseSensitive by rememberSaveable(bookId) { mutableStateOf(false) }
@@ -164,9 +252,9 @@ private fun BookEditorContent(
     val editorListState = rememberLazyListState()
 
     fun requestExport() {
-        val path = state.book?.filePath.orEmpty()
+        val path = state.book?.filePath.orEmpty().substringBefore('?')
         val extension = path.substringAfterLast('.', "").lowercase()
-        if (extension != "txt") {
+        if (extension !in setOf("txt", "epub")) {
             val message = if (exportAfterSave) {
                 R.string.book_editor_saved_export_unsupported
             } else {
@@ -183,7 +271,56 @@ private fun BookEditorContent(
         val fileName = path.substringAfterLast('/')
         val baseName = fileName.substringBeforeLast('.', fileName)
         val suffix = context.getString(R.string.book_editor_export_name_suffix)
-        exportLauncher.launch("$baseName$suffix.txt")
+        val suggestedName = "$baseName$suffix.$extension"
+        if (extension == "txt") exportLauncher.launch(suggestedName)
+        else epubExportLauncher.launch(suggestedName)
+    }
+
+    suspend fun saveAndSyncCopy(navigateAfter: Boolean = false) {
+        val saved = model.save()
+        if (!saved) {
+            model.state.value.errorMessage?.let {
+                context.getString(R.string.book_editor_save_error, it).showToast(context)
+            }
+            return
+        }
+        if (returnToReader) ReaderScreen.reloadEditedBookChannel.trySend(bookId)
+
+        if (model.state.value.savedCopyUri != null) {
+            val updated = model.updateSavedCopy()
+            snackbarHostState.showSnackbar(
+                context.getString(
+                    if (updated) R.string.book_editor_copy_updated
+                    else R.string.book_editor_copy_update_failed
+                )
+            )
+            if (updated && navigateAfter) {
+                onNavigateBack()
+            }
+            if (!updated) navigateAfterExport = false
+        } else {
+            navigateAfterExport = navigateAfter
+            exportAfterSave = true
+            requestExport()
+            if (navigateAfter && !exportAfterSave) {
+                navigateAfterExport = false
+                onNavigateBack()
+            }
+        }
+    }
+
+    suspend fun chooseNewCopyLocation() {
+        val saved = model.save()
+        if (!saved) {
+            model.state.value.errorMessage?.let {
+                context.getString(R.string.book_editor_save_error, it).showToast(context)
+            }
+            return
+        }
+        if (returnToReader) ReaderScreen.reloadEditedBookChannel.trySend(bookId)
+        navigateAfterExport = false
+        exportAfterSave = true
+        requestExport()
     }
 
     LaunchedEffect(searchJump?.sequence) {
@@ -249,20 +386,7 @@ private fun BookEditorContent(
                     }
                     IconButton(
                         onClick = {
-                            scope.launch {
-                                val saved = model.save()
-                                if (saved) {
-                                    if (returnToReader) {
-                                        ReaderScreen.reloadEditedBookChannel.trySend(bookId)
-                                    }
-                                    exportAfterSave = true
-                                    requestExport()
-                                } else {
-                                    model.state.value.errorMessage?.let {
-                                        context.getString(R.string.book_editor_save_error, it).showToast(context)
-                                    }
-                                }
-                            }
+                            scope.launch { saveAndSyncCopy() }
                         },
                         enabled = state.isDirty && !state.isSaving && !state.isExporting
                     ) {
@@ -285,12 +409,43 @@ private fun BookEditorContent(
                         onDismissRequest = { showMoreMenu = false }
                     ) {
                         DropdownMenuItem(
-                            text = { Text(stringResource(R.string.book_editor_export_copy)) },
+                            text = {
+                                Text(
+                                    stringResource(
+                                        if (state.savedCopyUri == null) R.string.book_editor_export_copy
+                                        else R.string.book_editor_update_copy
+                                    )
+                                )
+                            },
                             enabled = !state.isSaving && !state.isExporting,
                             onClick = {
                                 showMoreMenu = false
-                                exportAfterSave = false
-                                requestExport()
+                                scope.launch { saveAndSyncCopy() }
+                            }
+                        )
+                        if (state.savedCopyUri != null) {
+                            DropdownMenuItem(
+                                text = {
+                                    Text(stringResource(R.string.book_editor_change_copy_location))
+                                },
+                                enabled = !state.isSaving && !state.isExporting,
+                                onClick = {
+                                    showMoreMenu = false
+                                    scope.launch { chooseNewCopyLocation() }
+                                }
+                            )
+                        }
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.book_editor_history)) },
+                            leadingIcon = {
+                                Icon(
+                                    painter = painterResource(R.drawable.ic_history_rounded_24px),
+                                    contentDescription = null
+                                )
+                            },
+                            onClick = {
+                                showMoreMenu = false
+                                showEditHistory = true
                             }
                         )
                         DropdownMenuItem(
@@ -388,7 +543,7 @@ private fun BookEditorContent(
                 }
             }
 
-            state.errorMessage != null -> {
+            state.errorMessage != null && state.book == null -> {
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
@@ -561,6 +716,21 @@ private fun BookEditorContent(
         }
     }
 
+    if (showEditHistory) {
+        ModalBottomSheet(
+            onDismissRequest = { showEditHistory = false },
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+        ) {
+            BookEditHistorySheet(
+                revisions = state.editHistory,
+                onRestore = { revision ->
+                    showEditHistory = false
+                    revisionToRestore = revision
+                }
+            )
+        }
+    }
+
     if (showDiscardDialog) {
         AlertDialog(
             onDismissRequest = { showDiscardDialog = false },
@@ -571,14 +741,7 @@ private fun BookEditorContent(
                     onClick = {
                         showDiscardDialog = false
                         scope.launch {
-                            if (model.save()) {
-                                if (returnToReader) ReaderScreen.reloadEditedBookChannel.trySend(bookId)
-                                onNavigateBack()
-                            } else {
-                                model.state.value.errorMessage?.let {
-                                    context.getString(R.string.book_editor_save_error, it).showToast(context)
-                                }
-                            }
+                            saveAndSyncCopy(navigateAfter = true)
                         }
                     },
                     enabled = !state.isSaving
@@ -614,7 +777,15 @@ private fun BookEditorContent(
                         scope.launch {
                             if (model.restoreOriginal()) {
                                 if (returnToReader) ReaderScreen.reloadEditedBookChannel.trySend(bookId)
-                                snackbarHostState.showSnackbar(context.getString(R.string.book_editor_restored))
+                                snackbarHostState.showSnackbar(
+                                    context.getString(
+                                        if (model.state.value.savedCopyUpdateFailed) {
+                                            R.string.book_editor_copy_update_failed
+                                        } else {
+                                            R.string.book_editor_restored
+                                        }
+                                    )
+                                )
                             } else {
                                 model.state.value.errorMessage?.let {
                                     context.getString(R.string.book_editor_save_error, it).showToast(context)
@@ -629,6 +800,47 @@ private fun BookEditorContent(
             },
             dismissButton = {
                 TextButton(onClick = { showRestoreDialog = false }) {
+                    Text(stringResource(R.string.cancel))
+                }
+            }
+        )
+    }
+
+    revisionToRestore?.let { revision ->
+        AlertDialog(
+            onDismissRequest = { revisionToRestore = null },
+            title = { Text(stringResource(R.string.book_editor_history_restore_title)) },
+            text = { Text(stringResource(R.string.book_editor_history_restore_confirmation)) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        revisionToRestore = null
+                        scope.launch {
+                            if (model.restoreRevision(revision.id)) {
+                                if (returnToReader) ReaderScreen.reloadEditedBookChannel.trySend(bookId)
+                                snackbarHostState.showSnackbar(
+                                    context.getString(
+                                        if (model.state.value.savedCopyUpdateFailed) {
+                                            R.string.book_editor_copy_update_failed
+                                        } else {
+                                            R.string.book_editor_history_restored
+                                        }
+                                    )
+                                )
+                            } else {
+                                model.state.value.errorMessage?.let {
+                                    context.getString(R.string.book_editor_save_error, it).showToast(context)
+                                }
+                            }
+                        }
+                    },
+                    enabled = !state.isSaving && !state.isExporting
+                ) {
+                    Text(stringResource(R.string.book_editor_history_restore_action))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { revisionToRestore = null }) {
                     Text(stringResource(R.string.cancel))
                 }
             }
@@ -738,6 +950,16 @@ private fun SearchSheet(
             onValueChange = onQueryChange,
             modifier = Modifier.fillMaxWidth(),
             label = { Text(stringResource(R.string.book_editor_search_for)) },
+            trailingIcon = {
+                if (query.isNotEmpty()) {
+                    IconButton(onClick = { onQueryChange("") }) {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_close_rounded_24px),
+                            contentDescription = stringResource(R.string.book_editor_clear_search)
+                        )
+                    }
+                }
+            },
             singleLine = true,
             shape = MaterialTheme.shapes.medium
         )
@@ -746,6 +968,16 @@ private fun SearchSheet(
             onValueChange = onReplacementChange,
             modifier = Modifier.fillMaxWidth(),
             label = { Text(stringResource(R.string.book_editor_replace_with)) },
+            trailingIcon = {
+                if (replacement.isNotEmpty()) {
+                    IconButton(onClick = { onReplacementChange("") }) {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_close_rounded_24px),
+                            contentDescription = stringResource(R.string.book_editor_clear_replacement)
+                        )
+                    }
+                }
+            },
             singleLine = true,
             shape = MaterialTheme.shapes.medium
         )
@@ -874,6 +1106,88 @@ private fun SearchSheet(
                 enabled = matches.isNotEmpty()
             ) {
                 Text(stringResource(R.string.book_editor_replace_all))
+            }
+        }
+        Spacer(Modifier.heightIn(min = 12.dp))
+    }
+}
+
+@Composable
+private fun BookEditHistorySheet(
+    revisions: List<BookTextEditRevisionSummary>,
+    onRestore: (BookTextEditRevisionSummary) -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .fillMaxHeight(0.82f)
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Text(
+            text = stringResource(R.string.book_editor_history),
+            style = MaterialTheme.typography.titleLarge
+        )
+        Text(
+            text = stringResource(R.string.book_editor_history_desc),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.bodySmall
+        )
+
+        if (revisions.isEmpty()) {
+            Text(
+                text = stringResource(R.string.book_editor_history_empty),
+                modifier = Modifier.padding(vertical = 16.dp),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodyMedium
+            )
+        } else {
+            LazyColumn(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                items(revisions, key = { it.id }) { revision ->
+                    val timestamp = remember(revision.id, revision.savedAt) {
+                        DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT)
+                            .format(Date(revision.savedAt))
+                    }
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(
+                            modifier = Modifier.weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(2.dp)
+                        ) {
+                            Text(
+                                text = if (revision.isOriginal) {
+                                    stringResource(R.string.book_editor_history_original)
+                                } else if (revision.label == "before_restore") {
+                                    stringResource(R.string.book_editor_history_before_restore, timestamp)
+                                } else {
+                                    timestamp
+                                },
+                                style = MaterialTheme.typography.bodyLarge
+                            )
+                            Text(
+                                text = stringResource(
+                                    R.string.book_editor_history_entries,
+                                    revision.entryCount
+                                ),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                style = MaterialTheme.typography.labelSmall
+                            )
+                        }
+                        IconButton(onClick = { onRestore(revision) }) {
+                            Icon(
+                                painter = painterResource(R.drawable.ic_settings_backup_restore_rounded_24px),
+                                contentDescription = stringResource(R.string.book_editor_history_restore_action),
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                    }
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                }
             }
         }
         Spacer(Modifier.heightIn(min = 12.dp))

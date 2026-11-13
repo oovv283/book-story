@@ -8,6 +8,7 @@
 package com.byteflipper.everbook.ui.book_editor
 
 import com.byteflipper.everbook.domain.library.book.Book
+import com.byteflipper.everbook.data.editor.BookTextEditRevisionSummary
 import com.byteflipper.everbook.domain.reader.ReaderText
 
 internal data class BookEditorState(
@@ -19,5 +20,8 @@ internal data class BookEditorState(
     val isDirty: Boolean = false,
     val undoStack: List<List<ReaderText>> = emptyList(),
     val redoStack: List<List<ReaderText>> = emptyList(),
+    val editHistory: List<BookTextEditRevisionSummary> = emptyList(),
+    val savedCopyUri: String? = null,
+    val savedCopyUpdateFailed: Boolean = false,
     val errorMessage: String? = null
 )
