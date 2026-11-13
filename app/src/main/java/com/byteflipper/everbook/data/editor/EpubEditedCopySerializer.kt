@@ -125,7 +125,7 @@ internal object EpubEditedCopySerializer {
                         return@forEachIndexed
                     }
 
-                    val normalized = normalizeText(textNode.wholeText())
+                    val normalized = normalizeText(textNode.wholeText)
                     val matchingChanges = changeIndexesByText[normalized].orEmpty()
                     matchingChanges.forEach { changeIndex ->
                         require(locations[changeIndex] == null) {
